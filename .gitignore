@@ -1,0 +1,27 @@
+# Local runtime configuration and generated binaries
+/runtime-paths.json
+/runtime-status.json
+/settings.json
+/UsageOverlay.exe
+*.pdb
+*.log
+node_modules/
+bin/
+obj/
+.env
+.env.*
+!.env.example
+
+# Private local investigation and machine-specific verification artifacts
+/조사결과.txt
+/evidence.json
+/geometry-test.json
+/prototype-verification.json
+/native-indicator-evidence.json
+/inspect-native.mjs
+
+# Editor and OS artifacts
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini
