@@ -11,8 +11,8 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.2.1.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.2.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.3.0.0")]
 [assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
 
 namespace PersonalUsageOverlay
@@ -49,6 +49,28 @@ namespace PersonalUsageOverlay
     {
         public string type, status, observedAt, attemptedAt, reason;
         public List<LimitWindow> windows = new List<LimitWindow>();
+    }
+
+    internal static class WeeklyQuotaWarning
+    {
+        // Matches the warning colour in the inspected desktop version, not its icon visibility.
+        public const double ThresholdPercent = 15;
+        public static readonly TimeSpan FreshFor = TimeSpan.FromMinutes(3);
+        public static double? Remaining(UsageState state, DateTimeOffset now)
+        {
+            DateTimeOffset observed;
+            if(state==null || state.status!="ok" || !DateTimeOffset.TryParse(state.observedAt,out observed)
+                || observed>now || now-observed>=FreshFor)return null;
+            double? lowest=null;
+            foreach(var w in state.windows??new List<LimitWindow>())
+            {
+                if(w==null || w.limitId!="codex" || w.windowDurationMins!=10080
+                    || double.IsNaN(w.remainingPercent) || double.IsInfinity(w.remainingPercent)
+                    || w.remainingPercent<0 || w.remainingPercent>=ThresholdPercent)continue;
+                if(!lowest.HasValue || w.remainingPercent<lowest.Value)lowest=w.remainingPercent;
+            }
+            return lowest;
+        }
     }
 
     internal static class Native
@@ -93,6 +115,7 @@ namespace PersonalUsageOverlay
     {
         public string MainText = "한도 확인 중", DetailText = "공식 조회 · 연결 대기";
         public Color StateColor = Color.FromArgb(116, 192, 174);
+        public double? LowWeeklyRemaining;
         public float ScaleFactor = 1;
         public Badge()
         {
@@ -124,11 +147,29 @@ namespace PersonalUsageOverlay
             using (var fill = new SolidBrush(Color.FromArgb(23, 31, 43)))
             using (var stroke = new Pen(Color.FromArgb(53, 65, 82), Math.Max(1, s)))
             { g.FillPath(fill, path); g.DrawPath(stroke, path); }
-            using (var dot = new SolidBrush(StateColor)) g.FillEllipse(dot, 10*s, 11*s, 5*s, 5*s);
+            if(LowWeeklyRemaining.HasValue)
+            {
+                var ring=new RectangleF(8*s,7*s,15*s,15*s);
+                using(var track=new Pen(Color.FromArgb(74,60,65),2*s))g.DrawEllipse(track,ring);
+                using(var arc=new Pen(StateColor,2*s))
+                {
+                    arc.StartCap=LineCap.Round; arc.EndCap=LineCap.Round;
+                    if(LowWeeklyRemaining.Value>0)g.DrawArc(arc,ring,-90,(float)(360*LowWeeklyRemaining.Value/100));
+                }
+                if(LowWeeklyRemaining.Value==0)
+                {
+                    using(var mark=new Pen(StateColor,1.6f*s))
+                    { g.DrawLine(mark,15.5f*s,11*s,15.5f*s,15*s); g.DrawLine(mark,15.5f*s,17*s,15.5f*s,17.5f*s); }
+                }
+                else using(var center=new SolidBrush(Color.FromArgb(136,118,125)))
+                    g.FillPolygon(center,new [] {new PointF(15.5f*s,11*s),new PointF(19*s,14.5f*s),new PointF(15.5f*s,18*s),new PointF(12*s,14.5f*s)});
+            }
+            else using (var dot = new SolidBrush(StateColor)) g.FillEllipse(dot, 10*s, 11*s, 5*s, 5*s);
             using (var mainFont = new Font("맑은 고딕", 12.1f*s, FontStyle.Bold, GraphicsUnit.Pixel))
             using (var subFont = new Font("맑은 고딕", 10*s, FontStyle.Regular, GraphicsUnit.Pixel))
             {
-                TextRenderer.DrawText(g, MainText, mainFont, new Rectangle((int)(22*s),(int)(5*s),Width-(int)(30*s),(int)(19*s)), Color.FromArgb(231,237,245), TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding|TextFormatFlags.SingleLine);
+                int mainLeft=(int)((LowWeeklyRemaining.HasValue?29:22)*s);
+                TextRenderer.DrawText(g, MainText, mainFont, new Rectangle(mainLeft,(int)(5*s),Width-mainLeft-(int)(8*s),(int)(19*s)), LowWeeklyRemaining.HasValue?Color.FromArgb(255,183,183):Color.FromArgb(231,237,245), TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding|TextFormatFlags.SingleLine);
                 TextRenderer.DrawText(g, DetailText, subFont, new Rectangle((int)(10*s),(int)(25*s),Width-(int)(20*s),(int)(16*s)), StateColor, TextFormatFlags.EndEllipsis|TextFormatFlags.NoPadding|TextFormatFlags.SingleLine);
             }
         }
@@ -354,8 +395,10 @@ namespace PersonalUsageOverlay
         {
             var windows=CodexWindows();
             DateTimeOffset observed;
-            bool aged=DateTimeOffset.TryParse(state.observedAt,out observed) && DateTimeOffset.UtcNow-observed>TimeSpan.FromMinutes(3);
+            var now=DateTimeOffset.UtcNow;
+            bool aged=DateTimeOffset.TryParse(state.observedAt,out observed) && now-observed>=WeeklyQuotaWarning.FreshFor;
             string status=state.status??"unavailable"; if(status=="ok"&&aged)status="stale";
+            double? lowWeekly=WeeklyQuotaWarning.Remaining(state,now);
             var parts=new List<string>(); var resets=new List<string>();
             foreach(var w in windows)
             {
@@ -374,11 +417,12 @@ namespace PersonalUsageOverlay
             else if(status=="ok"&&parts.Count>0)sub="갱신 "+TimeText(state.observedAt)+" · Codex 계정";
             else if(parts.Count>0)sub=((state.reason!=null&&state.reason!="last_update_expired")?"갱신 실패":"오래된 값")+" · 마지막 "+TimeText(state.observedAt);
             else sub="조회 실패 · 알림 영역에서 다시 갱신";
+            if(lowWeekly.HasValue)sub=(lowWeekly.Value==0?"주간 한도 소진":"주간 한도 부족")+" · 갱신 "+TimeText(state.observedAt);
             Details="연결된 Codex 계정의 한도\n"+sub+"\n"+string.Join("\n",resets.ToArray());
             if(state.reason!=null)Details+="\n상태: "+FriendlyReason(state.reason);
-            badge.StateColor=status=="ok"&&parts.Count>0?Color.FromArgb(127,199,174):Color.FromArgb(238,183,98);
-            if(lastMain!=MainText || lastDetail!=sub)
-            { badge.MainText=MainText; badge.DetailText=sub; badge.Invalidate(); lastMain=MainText; lastDetail=sub; }
+            var color=lowWeekly.HasValue?Color.FromArgb(242,100,112):status=="ok"&&parts.Count>0?Color.FromArgb(127,199,174):Color.FromArgb(238,183,98);
+            if(lastMain!=MainText || lastDetail!=sub || badge.LowWeeklyRemaining!=lowWeekly || badge.StateColor!=color)
+            { badge.MainText=MainText; badge.DetailText=sub; badge.LowWeeklyRemaining=lowWeekly; badge.StateColor=color; badge.Invalidate(); lastMain=MainText; lastDetail=sub; }
             if(settings!=null && !settings.IsDisposed)settings.UpdateUsage();
             string tip="잔여 한도 · "+MainText; tray.Text=tip.Length>63?tip.Substring(0,63):tip;
         }
@@ -462,6 +506,7 @@ namespace PersonalUsageOverlay
                     extendedStyle=badge.IsHandleCreated?Native.GetWindowLongPtr(badge.Handle,-20).ToInt64():0,
                     workerPid=worker!=null&&!worker.HasExited?worker.Id:0, status=state.status, observedAt=state.observedAt,
                     mainText=MainText, detailText=lastDetail, reason=state.reason,
+                    lowWeeklyRemaining=badge.LowWeeklyRemaining, warningThresholdPercent=WeeklyQuotaWarning.ThresholdPercent,
                     trayIdentity=StableTray.IdentityString, trayRegistered=tray.IsRegistered,
                     installedExecutable=Application.ExecutablePath, version=System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3) };
                 File.WriteAllText(diagnostics,json.Serialize(data),new UTF8Encoding(false));
@@ -492,6 +537,7 @@ namespace PersonalUsageOverlay
         [STAThread] private static void Main(string[] args)
         {
             if(args.Length>0 && args[0]=="--self-test") { SelfTest(args.Length>1?args[1]:null); return; }
+            if(args.Length==2 && args[0]=="--render-samples") { RenderSamples(Path.GetFullPath(args[1])); return; }
             if(args.Length>0 && args[0]=="--shutdown")
             {
                 int wait=15000;
@@ -579,10 +625,71 @@ namespace PersonalUsageOverlay
             checks["negative_tray_coordinates"]=StableTray.DecodeAnchor(new IntPtr(unchecked((int)(0x0078f8f8))))==new Point(-1800,120);
             checks["fixed_install_path_accepts_canonical_exe"]=AppIdentity.IsInstalledPath(AppIdentity.Executable);
             checks["checkout_cannot_register_stable_icon"]=!AppIdentity.IsInstalledPath(Path.Combine(Path.GetTempPath(),"checkout","UsageOverlay.exe"));
+            var now=DateTimeOffset.Parse("2020-01-01T00:03:00Z",CultureInfo.InvariantCulture);
+            var quota=new UsageState {status="ok",observedAt=now.ToString("o")};
+            var weekly=new LimitWindow {limitId="codex",window="primary",windowDurationMins=10080,remainingPercent=14};
+            quota.windows.Add(weekly);
+            checks["weekly_fourteen_percent_warns"]=WeeklyQuotaWarning.Remaining(quota,now)==14;
+            weekly.remainingPercent=15;
+            checks["exactly_fifteen_does_not_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            weekly.remainingPercent=15.001;
+            checks["above_fifteen_does_not_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            weekly.remainingPercent=14.999;
+            checks["unrounded_value_controls_warning"]=WeeklyQuotaWarning.Remaining(quota,now)==14.999 && weekly.remainingPercent.ToString("0.#",CultureInfo.InvariantCulture)=="15";
+            weekly.remainingPercent=0;
+            checks["zero_is_exhausted_not_unavailable"]=WeeklyQuotaWarning.Remaining(quota,now)==0;
+            weekly.remainingPercent=14; weekly.window="secondary";
+            checks["weekly_secondary_is_supported"]=WeeklyQuotaWarning.Remaining(quota,now)==14;
+            weekly.windowDurationMins=300;
+            checks["five_hour_is_not_weekly_warning"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            weekly.windowDurationMins=null;
+            checks["missing_period_is_not_guessed"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            weekly.windowDurationMins=10080; weekly.limitId="other";
+            checks["other_account_bucket_does_not_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            weekly.limitId="codex";
+            foreach(var status in new [] {"loading","stale","unavailable"})
+            { quota.status=status; checks["no_live_warning_when_"+status]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue; }
+            quota.status="ok"; quota.observedAt=now.AddMinutes(-3).ToString("o");
+            checks["three_minute_boundary_is_stale"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            quota.observedAt=now.AddMinutes(-3).AddMilliseconds(1).ToString("o");
+            checks["fresh_last_millisecond_can_warn"]=WeeklyQuotaWarning.Remaining(quota,now)==14;
+            quota.observedAt=null;
+            checks["missing_success_time_cannot_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            quota.observedAt="invalid";
+            checks["invalid_success_time_cannot_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            quota.observedAt=now.AddMinutes(1).ToString("o");
+            checks["future_success_time_cannot_warn"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
+            quota.observedAt=now.ToString("o");
+            foreach(var value in new [] {double.NaN,double.PositiveInfinity,-1,101})
+            { weekly.remainingPercent=value; checks["invalid_remaining_"+value.ToString(CultureInfo.InvariantCulture)]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue; }
+            weekly.remainingPercent=14;
+            checks["successful_recovery_restores_warning"]=WeeklyQuotaWarning.Remaining(quota,now)==14;
+            weekly.remainingPercent=80;
+            checks["quota_recovery_clears_warning"]=!WeeklyQuotaWarning.Remaining(quota,now).HasValue;
             bool passed=true; foreach(bool result in checks.Values)passed&=result;
             var text=new JavaScriptSerializer().Serialize(new {passed=passed,checks=checks});
             if(output!=null)File.WriteAllText(output,text,new UTF8Encoding(false));
             Environment.ExitCode=passed?0:1;
+        }
+        private static void RenderSamples(string directory)
+        {
+            // Developer-only visual verification: no tray, worker, account read or settings writes.
+            Directory.CreateDirectory(directory);
+            Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+            var samples=new [] {
+                new {Name="normal",Main="주간 75% 남음",Detail="갱신 12:34:56 · Codex 계정",Low=(double?)null,Color=Color.FromArgb(127,199,174)},
+                new {Name="weekly-low",Main="주간 14% 남음",Detail="주간 한도 부족 · 갱신 12:34:56",Low=(double?)14,Color=Color.FromArgb(242,100,112)},
+                new {Name="weekly-exhausted",Main="주간 0% 남음",Detail="주간 한도 소진 · 갱신 12:34:56",Low=(double?)0,Color=Color.FromArgb(242,100,112)},
+                new {Name="stale",Main="이전 값 · 주간 14% 남음",Detail="갱신 실패 · 마지막 12:34:56",Low=(double?)null,Color=Color.FromArgb(238,183,98)}
+            };
+            foreach(var sample in samples)foreach(var scale in new [] {1f,1.5f,2f})
+            using(var badge=new Badge {ClientSize=new Size((int)(224*scale),(int)(46*scale)),ScaleFactor=scale,
+                MainText=sample.Main,DetailText=sample.Detail,LowWeeklyRemaining=sample.Low,StateColor=sample.Color})
+            using(var bitmap=new Bitmap(badge.Width,badge.Height))
+            {
+                badge.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));
+                bitmap.Save(Path.Combine(directory,sample.Name+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+            }
         }
     }
 }
