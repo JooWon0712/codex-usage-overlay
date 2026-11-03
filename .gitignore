@@ -1,4 +1,6 @@
 # Local runtime configuration and generated binaries
+/.build/
+/install-test-results.json
 /runtime-paths.json
 /runtime-status.json
 /settings.json

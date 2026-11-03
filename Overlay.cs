@@ -11,8 +11,28 @@ using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
+[assembly: System.Reflection.AssemblyVersion("0.2.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.2.1.0")]
+[assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
+
 namespace PersonalUsageOverlay
 {
+    internal static class AppIdentity
+    {
+        // Keep these names across releases, including compatibility with the first prototype.
+        public const string SingleInstance = "Local\\PersonalCodexUsageOverlayPrototype";
+        public const string OpenSettings = "Local\\PersonalCodexUsageOverlayOpenSettings";
+        public const string Shutdown = "Local\\PersonalCodexUsageOverlayShutdown";
+        public const string UpdateLock = "Local\\PersonalCodexUsageOverlayUpdateLock";
+        public static string InstallDirectory { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","CodexUsageOverlay"); } }
+        public static string Executable { get { return Path.Combine(InstallDirectory,"UsageOverlay.exe"); } }
+        public static string DataDirectory { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"CodexUsageOverlay"); } }
+        public static string SettingsFile { get { return Path.Combine(DataDirectory,"settings.json"); } }
+        public static bool IsInstalledPath(string path)
+        { return string.Equals(Path.GetFullPath(path),Path.GetFullPath(Executable),StringComparison.OrdinalIgnoreCase); }
+        public static bool Acquire(Mutex mutex,int timeout)
+        { try { return mutex.WaitOne(timeout); } catch(AbandonedMutexException) { return true; } }
+    }
     public class Preferences
     {
         public string Position = "sidebar";
@@ -198,7 +218,7 @@ namespace PersonalUsageOverlay
         private readonly Form dispatcher=new Form { ShowInTaskbar=false, Text="Usage Overlay Dispatcher" };
         private readonly Badge badge=new Badge();
         private SettingsWindow settings;
-        private readonly NotifyIcon tray=new NotifyIcon();
+        private readonly StableTray tray=new StableTray();
         private readonly System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();
         private Process worker;
         private UsageState state = new UsageState { status="loading" };
@@ -214,14 +234,20 @@ namespace PersonalUsageOverlay
         private IntPtr workerJob;
         private EventWaitHandle openSettingsEvent;
         private RegisteredWaitHandle openSettingsWait;
-        public OverlayContext(string diagnosticPath)
+        private EventWaitHandle shutdownEvent;
+        private RegisteredWaitHandle shutdownWait;
+        public OverlayContext(string diagnosticPath,bool background)
         {
             diagnostics=diagnosticPath;
             dispatcher.CreateControl(); var handle=dispatcher.Handle;
-            openSettingsEvent=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\PersonalCodexUsageOverlayOpenSettings");
+            openSettingsEvent=new EventWaitHandle(false,EventResetMode.AutoReset,AppIdentity.OpenSettings);
             openSettingsWait=ThreadPool.RegisterWaitForSingleObject(openSettingsEvent,delegate
             { try { dispatcher.BeginInvoke((Action)delegate { if(!Quitting)OpenSettings(); }); } catch { } },null,Timeout.Infinite,false);
-            try { var loaded=json.Deserialize<Preferences>(File.ReadAllText(Path.Combine(folder,"settings.json"))); if(loaded!=null)Prefs=loaded; } catch { }
+            shutdownEvent=new EventWaitHandle(false,EventResetMode.AutoReset,AppIdentity.Shutdown);
+            shutdownWait=ThreadPool.RegisterWaitForSingleObject(shutdownEvent,delegate
+            { try { dispatcher.BeginInvoke((Action)delegate { if(!Quitting)ExitThread(); }); } catch { } },null,Timeout.Infinite,false);
+            Directory.CreateDirectory(AppIdentity.DataDirectory);
+            try { var loaded=json.Deserialize<Preferences>(File.ReadAllText(AppIdentity.SettingsFile)); if(loaded!=null)Prefs=loaded; } catch { }
             if(Prefs.Position!="title")Prefs.Position="sidebar";
             runtime=LoadRuntime();
             workerJob=Native.CreateJobObject(IntPtr.Zero,null);
@@ -236,13 +262,14 @@ namespace PersonalUsageOverlay
             menu.Items.Add("위치 및 상태 설정…",null,delegate { OpenSettings(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("종료",null,delegate { ExitThread(); });
-            tray.Icon=SystemIcons.Information; tray.Text="Codex 잔여 한도 · 프로토타입";
+            tray.Icon=SystemIcons.Information; tray.Text="Codex 잔여 한도";
             tray.ContextMenuStrip=menu; tray.Visible=true; tray.DoubleClick+=delegate { OpenSettings(); };
+            if(!tray.IsRegistered)throw new InvalidOperationException("tray_registration_failed");
             eventCallback=OnNativeEvent;
             AddHook(3,3); AddHook(0x16,0x17); AddHook(0x8002,0x8003); AddHook(0x800B,0x800B);
             StartWorker();
             timer.Interval=200; timer.Tick+=delegate { Tick(); }; timer.Start();
-            OpenSettings();
+            if(!background)OpenSettings();
         }
         private RuntimePaths LoadRuntime()
         {
@@ -410,7 +437,7 @@ namespace PersonalUsageOverlay
         public void ResetPosition()
         { if(Prefs.Position=="title") { Prefs.TitleX=560; Prefs.TitleY=48; } else { Prefs.SidebarX=64; Prefs.SidebarY=82; } SavePreferences(); lastBounds=Rectangle.Empty; Tick(); }
         private void SavePreferences()
-        { try { File.WriteAllText(Path.Combine(folder,"settings.json"),json.Serialize(Prefs),new UTF8Encoding(false)); } catch { } }
+        { try { File.WriteAllText(AppIdentity.SettingsFile,json.Serialize(Prefs),new UTF8Encoding(false)); } catch { } }
         public void OpenSettings()
         { if(settings==null||settings.IsDisposed)settings=new SettingsWindow(this); settings.UpdateUsage(); settings.Show(); Native.ShowWindow(settings.Handle,5); settings.Activate(); }
         public void ActivateTarget()
@@ -434,7 +461,9 @@ namespace PersonalUsageOverlay
                     scale=badge.ScaleFactor, bounds=new { x=badge.Left,y=badge.Top,width=badge.Width,height=badge.Height },
                     extendedStyle=badge.IsHandleCreated?Native.GetWindowLongPtr(badge.Handle,-20).ToInt64():0,
                     workerPid=worker!=null&&!worker.HasExited?worker.Id:0, status=state.status, observedAt=state.observedAt,
-                    mainText=MainText, detailText=lastDetail, reason=state.reason };
+                    mainText=MainText, detailText=lastDetail, reason=state.reason,
+                    trayIdentity=StableTray.IdentityString, trayRegistered=tray.IsRegistered,
+                    installedExecutable=Application.ExecutablePath, version=System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3) };
                 File.WriteAllText(diagnostics,json.Serialize(data),new UTF8Encoding(false));
             } catch { }
         }
@@ -444,6 +473,8 @@ namespace PersonalUsageOverlay
             timer.Stop(); badge.Hide();
             if(openSettingsWait!=null)openSettingsWait.Unregister(null);
             if(openSettingsEvent!=null)openSettingsEvent.Dispose();
+            if(shutdownWait!=null)shutdownWait.Unregister(null);
+            if(shutdownEvent!=null)shutdownEvent.Dispose();
             foreach(var hook in hooks)Native.UnhookWinEvent(hook);
             if(worker!=null)
             {
@@ -461,21 +492,74 @@ namespace PersonalUsageOverlay
         [STAThread] private static void Main(string[] args)
         {
             if(args.Length>0 && args[0]=="--self-test") { SelfTest(args.Length>1?args[1]:null); return; }
-            bool created;
-            using(var mutex=new Mutex(true,"Local\\PersonalCodexUsageOverlayPrototype",out created))
+            if(args.Length>0 && args[0]=="--shutdown")
             {
-                if(!created)
-                {
-                    try { using(var signal=EventWaitHandle.OpenExisting("Local\\PersonalCodexUsageOverlayOpenSettings"))signal.Set(); }
-                    catch { MessageBox.Show("이미 실행 중입니다. 알림 영역의 잔여 한도 아이콘을 두 번 눌러 설정을 여세요.","잔여 한도"); }
-                    return;
-                }
-                try { Native.SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { }
-                Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
-                string diagnostic=null; for(int i=0;i<args.Length-1;i++)if(args[i]=="--diagnostics")diagnostic=Path.GetFullPath(args[i+1]);
-                Application.Run(new OverlayContext(diagnostic));
-                mutex.ReleaseMutex();
+                int wait=15000;
+                if(args.Length!=1 && (args.Length!=3 || args[1]!="--wait" || !int.TryParse(args[2],out wait) || wait<1000 || wait>60000))
+                { Environment.ExitCode=64; return; }
+                Environment.ExitCode=ShutdownAndWait(wait); return;
             }
+            bool background=false; string diagnostic=null;
+            for(int i=0;i<args.Length;i++)
+            {
+                if(args[i]=="--background")background=true;
+                else if(args[i]=="--diagnostics" && i+1<args.Length)diagnostic=Path.GetFullPath(args[++i]);
+                else { Environment.ExitCode=64; return; }
+            }
+            // A GUID icon must never bind to a versioned checkout/build path.
+            if(!AppIdentity.IsInstalledPath(Application.ExecutablePath))
+            {
+                if(File.Exists(AppIdentity.Executable))
+                {
+                    try { Process.Start(new ProcessStartInfo(AppIdentity.Executable,background?"--background":"") { UseShellExecute=false,CreateNoWindow=true }); }
+                    catch { Environment.ExitCode=1; }
+                }
+                else { MessageBox.Show("고정 설치 폴더에서 실행해야 합니다. 먼저 install.ps1을 실행해 주세요.","Codex 잔여 한도"); Environment.ExitCode=5; }
+                return;
+            }
+            using(var updateLock=new Mutex(false,AppIdentity.UpdateLock))
+            {
+                if(!AppIdentity.Acquire(updateLock,0)) { Environment.ExitCode=4; return; }
+                bool updateOwned=true;
+                try
+                {
+                    using(var mutex=new Mutex(false,AppIdentity.SingleInstance))
+                    {
+                        if(!AppIdentity.Acquire(mutex,0))
+                        {
+                            if(!background)try { using(var signal=EventWaitHandle.OpenExisting(AppIdentity.OpenSettings))signal.Set(); } catch { }
+                            return;
+                        }
+                        try
+                        {
+                            try { Native.SetThreadDpiAwarenessContext(new IntPtr(-4)); } catch { }
+                            Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+                            var context=new OverlayContext(diagnostic,background);
+                            updateLock.ReleaseMutex(); updateOwned=false;
+                            Application.Run(context);
+                        }
+                        catch { Environment.ExitCode=1; MessageBox.Show("보조 프로그램을 시작하지 못했습니다. 설치 상태와 트레이 등록을 확인해 주세요.","Codex 잔여 한도"); }
+                        finally { mutex.ReleaseMutex(); }
+                    }
+                }
+                finally { if(updateOwned)updateLock.ReleaseMutex(); }
+            }
+        }
+        private static int ShutdownAndWait(int timeout)
+        {
+            try
+            {
+                using(var mutex=Mutex.OpenExisting(AppIdentity.SingleInstance))
+                {
+                    if(AppIdentity.Acquire(mutex,0)) { mutex.ReleaseMutex(); return 0; }
+                    try { using(var signal=EventWaitHandle.OpenExisting(AppIdentity.Shutdown))signal.Set(); }
+                    catch(WaitHandleCannotBeOpenedException) { return 3; } // Legacy process: require normal UI exit.
+                    if(!AppIdentity.Acquire(mutex,timeout))return 2;
+                    mutex.ReleaseMutex(); return 0;
+                }
+            }
+            catch(WaitHandleCannotBeOpenedException) { return 0; }
+            catch { return 1; }
         }
         private static void SelfTest(string output)
         {
@@ -490,6 +574,11 @@ namespace PersonalUsageOverlay
             checks["title_clamped_inside_window"]=small==new Rectangle(-748,308,448,92);
             var tiny=OverlayContext.CalculateBounds(new Rectangle(0,0,100,30),1,p);
             checks["tiny_window_stays_inside"]=tiny==new Rectangle(0,0,100,30);
+            checks["stable_tray_native_layout"]=StableTray.NativeDataSize==976;
+            checks["stable_tray_identity"]=StableTray.Identity==new Guid("743b938d-a118-490c-8db5-a30c6dfc6250");
+            checks["negative_tray_coordinates"]=StableTray.DecodeAnchor(new IntPtr(unchecked((int)(0x0078f8f8))))==new Point(-1800,120);
+            checks["fixed_install_path_accepts_canonical_exe"]=AppIdentity.IsInstalledPath(AppIdentity.Executable);
+            checks["checkout_cannot_register_stable_icon"]=!AppIdentity.IsInstalledPath(Path.Combine(Path.GetTempPath(),"checkout","UsageOverlay.exe"));
             bool passed=true; foreach(bool result in checks.Values)passed&=result;
             var text=new JavaScriptSerializer().Serialize(new {passed=passed,checks=checks});
             if(output!=null)File.WriteAllText(output,text,new UTF8Encoding(false));

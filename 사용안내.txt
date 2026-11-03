@@ -1,9 +1,13 @@
 Codex 잔여 한도 오버레이 · 최소 기능 프로토타입
 
 실행
-UsageOverlay.exe를 두 번 눌러 실행합니다. 설치나 관리자 권한은 필요하지 않습니다.
+최초 설치 및 업데이트는 저장소 폴더에서 install.ps1을 실행합니다.
+별도 Setup.exe는 제공하지 않습니다. 스크립트 실행이 허용된 PowerShell이 필요하며,
+Windows 실행 정책이나 자동 시작 설정을 변경하지 않습니다.
+설치 경로는 %LOCALAPPDATA%\Programs\CodexUsageOverlay로 고정됩니다.
+설치된 UsageOverlay.exe를 두 번 눌러 실행합니다. 관리자 권한은 필요하지 않습니다.
 같은 파일을 다시 열면 이미 실행 중인 프로그램의 설정 창이 열립니다.
-폴더 안의 worker.mjs, probe.mjs, usage-state.mjs, runtime-paths.json을 함께 유지하세요.
+설치 폴더 안의 worker.mjs, probe.mjs, usage-state.mjs, runtime-paths.json을 함께 유지하세요.
 현재 PC에 이미 설치된 Node와 Codex App Server를 사용합니다.
 
 표시 위치
@@ -11,7 +15,7 @@ UsageOverlay.exe를 두 번 눌러 실행합니다. 설치나 관리자 권한�
 '앱에서 확인'을 누르면 설정 창이 닫히고 ChatGPT로 돌아갑니다.
 가로 값은 창 왼쪽 기준입니다. 세로 값은 사이드바에서는 창 아래 기준,
 제목 옆에서는 창 위 기준입니다. '기본 위치'로 선택한 위치를 되돌릴 수 있습니다.
-위치 선택 및 보정 값만 이 폴더의 settings.json에 저장합니다.
+위치 선택 및 보정 값은 %LOCALAPPDATA%\CodexUsageOverlay\settings.json에 저장합니다.
 알림 영역 아이콘 메뉴에서도 위치를 전환할 수 있습니다.
 
 갱신과 상태
@@ -42,10 +46,19 @@ UsageOverlay.exe를 다시 열거나 알림 영역 아이콘을 두 번 누르�
 종료 시 이 보조 프로그램이 띄운 조회 프로세스도 정리합니다.
 기존 ChatGPT/Codex 프로세스는 종료하지 않습니다.
 
+고정 경로와 업데이트
+- 트레이 아이콘은 모든 버전에서 같은 고정 GUID를 사용합니다.
+- 고정 설치 경로 밖에서는 새 아이콘을 등록하지 않고 설치본으로 연결합니다.
+- 업데이트 시 새 파일을 먼저 검증한 뒤 기존 버전을 정상 종료하고 종료 완료를 기다립니다.
+- 같은 설치 경로의 앱 파일만 교체하고 재실행합니다. 위치 설정은 보존합니다.
+- 파일 교체 실패 시 이전 파일로 되돌립니다. 백업은 저장소의 .build 아래에 남습니다.
+- 최초 개발용 프로토타입은 새 종료 명령이 없으므로 처음 한 번 메뉴에서 종료해야 합니다.
+- Windows의 과거 트레이 아이콘 기록을 임의로 삭제하지 않습니다.
+
 이번 버전의 범위
 - 자동 시작, 로그인 항목, 시작프로그램, 예약 작업은 등록하지 않았습니다.
 - 앱 파일이나 내부 기능 설정을 변경하지 않습니다.
-- 이 폴더 밖에 보조 프로그램 설정이나 사용량 기록을 저장하지 않습니다.
+- 위치 설정은 위 사용자 데이터 폴더에 저장하며 사용량 기록은 디스크에 캐시하지 않습니다.
 - 사용량과 계정 식별자는 디스크에 캐시하지 않습니다.
 - 인증 토큰을 직접 읽거나 복사하지 않으며 공식 App Server가 기존 로그인을 처리합니다.
 - 보조 프로그램의 대화 생성/모델 추론/사용 한도 초기화 요청은 없습니다.
@@ -71,8 +84,9 @@ UsageOverlay.exe를 다시 열거나 알림 영역 아이콘을 두 번 누르�
 build.ps1은 PC의 기존 Windows C# 컴파일러로 실행 파일을 빌드하고,
 현재 Node/Codex 경로만 runtime-paths.json에 기록합니다. 외부 패키지를 설치하지 않습니다.
 Node 검사: node --test probe.test.mjs worker.test.mjs
-좌표 검사: UsageOverlay.exe --self-test geometry-test.json
-진단 모드: UsageOverlay.exe --diagnostics runtime-status.json
+설치/업데이트 파일 교체 검사: install.test.ps1
+좌표/고정 식별자 검사: .build\UsageOverlay.exe --self-test .build\geometry-test.json
+진단 모드: 설치된 UsageOverlay.exe --diagnostics <저장할 JSON 파일 경로>
 진단 모드는 확인 시각/표시 상태/좌표/자식 PID 등만 이 폴더에 기록합니다.
 일반 실행에서는 이 파일을 갱신하지 않습니다.
 

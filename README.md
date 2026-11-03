@@ -23,18 +23,34 @@ Windows용 ChatGPT/Codex 데스크톱 앱에서 계정의 잔여 한도를 작�
 
 기존 Node/Codex 설치를 사용합니다. 이 프로젝트가 모델이나 외부 패키지를 설치하지는 않습니다.
 
-## 빌드 및 실행
+## 설치 및 업데이트
 
-PowerShell에서 저장소 폴더를 열고 실행합니다.
+현재는 별도 `Setup.exe` 대신 설치·업데이트 PowerShell 스크립트를 제공합니다. 스크립트 실행이 허용된 PowerShell에서 저장소 폴더를 열고 실행합니다. Windows 실행 정책은 변경하지 않습니다.
 
 ```powershell
-.\build.ps1
-.\UsageOverlay.exe
+.\install.ps1
 ```
 
-`build.ps1`은 Windows의 C# 컴파일러로 실행 파일을 만들고 현재 Node/Codex 경로를 `runtime-paths.json`에 기록합니다. 생성된 실행 파일과 경로 파일은 Git에서 제외됩니다. 앱 업데이트로 경로가 바뀌면 다시 빌드해 경로를 확인하세요.
+고정 설치 경로는 `%LOCALAPPDATA%\Programs\CodexUsageOverlay`입니다. 버전별 설치 폴더를 만들지 않으며 관리자 권한, 자동 시작, 예약 작업을 등록하지 않습니다. 표시 위치 설정은 `%LOCALAPPDATA%\CodexUsageOverlay\settings.json`에 보존합니다. 최초 설치 때 기존 저장소 폴더의 위치 설정이 있으면 한 번 복사합니다.
 
-실행 파일과 같은 폴더에 `worker.mjs`, `probe.mjs`, `usage-state.mjs`, `runtime-paths.json`을 유지해야 합니다. 빌드된 실행 파일은 이 저장소에서 배포하지 않습니다.
+다음 업데이트도 새 소스에서 같은 `install.ps1`을 실행합니다.
+
+1. 새 실행 파일을 임시 빌드 폴더에서 만들고, 필수 파일·실행 경로·자체 검사를 검증합니다.
+2. 새 인스턴스 실행을 막는 동안 기존 설치본에 정상 종료를 요청하고 실제 프로세스 종료를 기다립니다.
+3. 정해진 앱 파일만 같은 설치 경로에서 교체합니다. 교체 중 실패하면 교체한 파일을 이전 상태로 되돌립니다.
+4. 교체 잠금을 해제한 뒤 새 버전을 백그라운드로 실행합니다. 위치 설정은 덮어쓰지 않습니다.
+
+실행 중인 최초 개발용 프로토타입은 종료 명령을 지원하지 않습니다. 이 경우 처음 한 번 설정/알림 영역 메뉴에서 직접 종료한 후 설치해야 합니다. 임의로 강제 종료하지 않습니다.
+
+일상 실행은 다음 경로를 사용합니다.
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\CodexUsageOverlay\UsageOverlay.exe"
+```
+
+고정 경로 밖의 새 빌드 실행 파일은 설치본으로 연결되며, 그 위치에 트레이 아이콘을 등록하지 않습니다. 트레이의 고정 GUID는 버전 간 유지됩니다. Windows가 기억하는 이전 프로토타입의 과거 아이콘 기록은 자동으로 삭제하지 않습니다.
+
+실행 없이 파일만 설치하려면 `install.ps1 -NoLaunch`를 사용하세요. `build.ps1`은 개발용 빌드만 `.build`에 생성합니다. 생성된 실행 파일과 로컬 Node/Codex 경로 파일은 Git에서 제외되며, 빌드된 실행 파일은 저장소에서 배포하지 않습니다.
 
 ## 사용
 
@@ -60,7 +76,7 @@ PowerShell에서 저장소 폴더를 열고 실행합니다.
 
 - 공식 App Server가 기존 로그인을 처리하며, 프로그램이 인증 토큰 파일을 직접 읽거나 복사하지 않습니다.
 - 대화 생성, 모델 추론, 한도 초기화 요청은 하지 않습니다.
-- 사용량과 계정 식별자는 디스크에 캐시하지 않습니다. 위치 설정만 로컬 `settings.json`에 저장합니다.
+- 사용량과 계정 식별자는 디스크에 캐시하지 않습니다. 위치 설정은 별도 사용자 데이터 폴더에 저장합니다.
 - 공식 조회 결과는 읽기 전용이며, 앱 파일이나 내부 기능 설정을 수정하지 않습니다.
 - Windows Job Object로 보조 프로그램 소유의 조회 프로세스를 묶어 종료 시 함께 정리합니다.
 
@@ -68,7 +84,9 @@ PowerShell에서 저장소 폴더를 열고 실행합니다.
 
 ```powershell
 node --test probe.test.mjs worker.test.mjs
-.\UsageOverlay.exe --self-test geometry-test.json
+.\install.test.ps1
+.\build.ps1
+.\.build\UsageOverlay.exe --self-test .build\geometry-test.json
 ```
 
 상태·연결 테스트와 좌표 계산 검사가 포함돼 있습니다. 프로토타입에서는 두 표시 위치, 150% 배율, 클릭 통과, 최대화·최소화·복원, 정상·강제 종료를 실제 창에서 확인했습니다.
@@ -76,10 +94,10 @@ node --test probe.test.mjs worker.test.mjs
 필요한 경우 진단 모드를 실행할 수 있습니다.
 
 ```powershell
-.\UsageOverlay.exe --diagnostics runtime-status.json
+& "$env:LOCALAPPDATA\Programs\CodexUsageOverlay\UsageOverlay.exe" --diagnostics "$PWD\runtime-status.json"
 ```
 
-진단 파일에는 표시 상태, 갱신 시각, 좌표 및 자체 프로세스 ID 등이 기록됩니다. 일반 실행에서는 이 파일을 갱신하지 않으며 Git에서도 제외됩니다.
+진단 파일에는 표시 상태, 갱신 시각, 좌표 및 자체 프로세스 ID, 트레이 등록 상태 등이 기록됩니다. 일반 실행에서는 이 파일을 갱신하지 않으며 Git에서도 제외됩니다. 이미 실행 중이면 먼저 종료한 뒤 진단 모드로 실행하세요.
 
 ## 제한 사항
 
