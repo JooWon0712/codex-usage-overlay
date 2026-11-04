@@ -9,7 +9,7 @@ namespace PersonalUsageOverlay
         private readonly OverlayContext app;
         private readonly RadioButton sidebar = new RadioButton(), title = new RadioButton();
         private readonly NumericUpDown x = new NumericUpDown(), y = new NumericUpDown();
-        private readonly Label vertical = new Label(), detail = new Label(), summary = new Label();
+        private readonly Label horizontal = new Label(), vertical = new Label(), detail = new Label(), summary = new Label(), positionStatus = new Label();
         private bool updating;
         public SettingsWindow(OverlayContext owner)
         {
@@ -39,7 +39,11 @@ namespace PersonalUsageOverlay
             title.Text = "세션 제목 아래";
             title.SetBounds(222, 261, 200, 27);
             Controls.Add(title);
-            AddLabel("가로: 창 왼쪽에서", 24, 307, 180, 24, 9, false);
+            positionStatus.SetBounds(24, 290, 398, 17);
+            positionStatus.Font = new Font(Font.FontFamily, 10, FontStyle.Regular, GraphicsUnit.Pixel);
+            positionStatus.ForeColor = Color.FromArgb(71,85,105);
+            Controls.Add(positionStatus);
+            horizontal.SetBounds(24, 307, 180, 24); Controls.Add(horizontal);
             vertical.SetBounds(222, 307, 200, 24);
             Controls.Add(vertical);
             x.AccessibleName = "가로 위치";
@@ -54,7 +58,7 @@ namespace PersonalUsageOverlay
             y.Increment = 4;
             y.SetBounds(222, 335, 200, 28);
             Controls.Add(y);
-            AddLabel("창 콘텐츠 영역 기준 위치입니다. 제목 아래에 맞춰 가로·세로를 보정하세요.", 24, 375, 410, 35, 8, false);
+            AddLabel("제목의 실제 위치를 읽어 배치합니다. 가로 보정과 아래 간격을 조정하세요.", 24, 375, 410, 35, 8, false);
             AddButton("기본 위치", 24, 418, 94, 31, delegate
             {
                 app.ResetPosition();
@@ -152,9 +156,11 @@ namespace PersonalUsageOverlay
             bool side = app.Prefs.Position == "sidebar";
             sidebar.Checked = side;
             title.Checked = !side;
-            x.Value = Math.Max(0, Math.Min(4000, side ? app.Prefs.SidebarX : app.Prefs.TitleBelowX));
-            y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.SidebarY : app.Prefs.TitleBelowY));
-            vertical.Text = side ? "세로: 창 아래에서" : "세로: 창 위에서";
+            x.Minimum = side ? 0 : -4000;
+            x.Value = Math.Max((int)x.Minimum, Math.Min(4000, side ? app.Prefs.SidebarX : app.Prefs.TitleOffsetX));
+            y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.SidebarY : app.Prefs.TitleGap));
+            horizontal.Text = side ? "가로: 창 왼쪽에서" : "가로: 제목 왼쪽 보정";
+            vertical.Text = side ? "세로: 창 아래에서" : "세로: 제목 영역 아래 간격";
             updating = false;
         }
 
@@ -162,6 +168,12 @@ namespace PersonalUsageOverlay
         {
             summary.Text = app.MainText;
             detail.Text = app.Details;
+            UpdatePositionStatus();
+        }
+
+        public void UpdatePositionStatus()
+        {
+            positionStatus.Text = app.PositionStatus;
         }
     }
 }

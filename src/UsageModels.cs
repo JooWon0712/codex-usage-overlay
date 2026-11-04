@@ -6,15 +6,17 @@ namespace PersonalUsageOverlay
     public class Preferences
     {
         internal const string BelowTitle = "title-below";
-        internal const int DefaultTitleBelowX = 48, DefaultTitleBelowY = 56;
+        internal const int DefaultTitleOffsetX = 0, DefaultTitleGap = 6;
         public string Position = BelowTitle;
         public int SidebarX = 64, SidebarY = 82;
-        public int TitleBelowX = DefaultTitleBelowX, TitleBelowY = DefaultTitleBelowY;
+        public int TitleOffsetX = DefaultTitleOffsetX, TitleGap = DefaultTitleGap;
 
         internal void NormalizePosition()
         {
             if (Position != "sidebar" && Position != BelowTitle)
                 Position = BelowTitle;
+            TitleOffsetX = Math.Max(-4000, Math.Min(4000, TitleOffsetX));
+            TitleGap = Math.Max(0, Math.Min(3000, TitleGap));
         }
 
         internal void ResetCurrentPosition()
@@ -26,8 +28,8 @@ namespace PersonalUsageOverlay
             }
             else
             {
-                TitleBelowX = DefaultTitleBelowX;
-                TitleBelowY = DefaultTitleBelowY;
+                TitleOffsetX = DefaultTitleOffsetX;
+                TitleGap = DefaultTitleGap;
             }
         }
     }

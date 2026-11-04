@@ -24,6 +24,9 @@ namespace PersonalUsageOverlay
             Text = "Usage Overlay Dispatcher"
         };
         private readonly Badge badge = new Badge();
+        private readonly TitleAnchorTracker titleTracker = new TitleAnchorTracker();
+        private TitleAnchorObservation titleAnchor;
+        private string anchorStatus = "pending";
         private SettingsWindow settings;
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private Process worker;
@@ -45,6 +48,19 @@ namespace PersonalUsageOverlay
         private RegisteredWaitHandle openSettingsWait;
         private EventWaitHandle shutdownEvent;
         private RegisteredWaitHandle shutdownWait;
+        public string PositionStatus
+        {
+            get
+            {
+                if (Prefs.Position == "sidebar") return "사이드바 · 창 기준 위치";
+                if (anchorStatus == "ok") return "본문 제목 아래 · 자동 위치 확인됨";
+                if (anchorStatus == "pending") return "제목 위치 확인 대기 · 앱 활성 시 읽기";
+                if (anchorStatus == "search_timeout") return "제목 위치 조회 지연 · 잠시 후 재확인";
+                if (anchorStatus == "ambiguous") return "제목 위치가 모호함 · 사이드바 선택 가능";
+                if (anchorStatus == "no_space") return "제목 아래 표시 공간 부족";
+                return "제목 위치 확인 불가 · 사이드바 선택 가능";
+            }
+        }
         public OverlayContext(string diagnosticPath)
         {
             diagnostics = diagnosticPath;
@@ -229,9 +245,12 @@ namespace PersonalUsageOverlay
                 {
                     float scale = Math.Max(96, Native.GetDpiForWindow(target)) / 96f;
                     var rect = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
-                    var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs);
+                    titleAnchor = Prefs.Position == "sidebar" ? null : titleTracker.GetOrRequest(target, rect, scale);
+                    anchorStatus = titleAnchor == null ? "sidebar" : titleAnchor.Status;
+                    var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor);
                     if (bounds.Width < 80 || bounds.Height < 25)
                     {
+                        if (anchorStatus == "ok") anchorStatus = "no_space";
                         badge.Hide();
                     }
                     else
@@ -266,6 +285,7 @@ namespace PersonalUsageOverlay
             }
 
             WriteDiagnostic();
+            if (settings != null && !settings.IsDisposed) settings.UpdatePositionStatus();
         }
 
         private void UpdateText()
@@ -434,8 +454,8 @@ namespace PersonalUsageOverlay
         {
             if (Prefs.Position == Preferences.BelowTitle)
             {
-                Prefs.TitleBelowX = left;
-                Prefs.TitleBelowY = vertical;
+                Prefs.TitleOffsetX = left;
+                Prefs.TitleGap = vertical;
             }
             else
             {
@@ -539,6 +559,10 @@ namespace PersonalUsageOverlay
                     reason = state.reason,
                     lowWeeklyRemaining = badge.LowWeeklyRemaining,
                     warningThresholdPercent = WeeklyQuotaWarning.ThresholdPercent,
+                    titleAnchorStatus = anchorStatus,
+                    titleAnchorObservedAt = titleAnchor != null ? titleAnchor.ObservedAtUtc.ToString("o") : null,
+                    titleBounds = titleAnchor != null ? new { x=titleAnchor.TitleBounds.X,y=titleAnchor.TitleBounds.Y,width=titleAnchor.TitleBounds.Width,height=titleAnchor.TitleBounds.Height } : null,
+                    headerBounds = titleAnchor != null ? new { x=titleAnchor.HeaderBounds.X,y=titleAnchor.HeaderBounds.Y,width=titleAnchor.HeaderBounds.Width,height=titleAnchor.HeaderBounds.Height } : null,
                     executionMode = "window",
                     mainWindowVisible = settings != null && !settings.IsDisposed && settings.Visible,
                     mainWindowState = settings != null && !settings.IsDisposed ? settings.WindowState.ToString() : "closed",
@@ -600,6 +624,7 @@ namespace PersonalUsageOverlay
             {
                 timer.Stop();
             });
+            TryCleanup(titleTracker.Dispose);
             TryCleanup(delegate
             {
                 badge.Hide();
