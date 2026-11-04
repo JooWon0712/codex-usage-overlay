@@ -18,6 +18,17 @@ namespace PersonalUsageOverlay
         }
 
         public delegate bool EnumProc(IntPtr hwnd, IntPtr param);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MARGINS { public int Left, Right, Top, Bottom; }
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref MARGINS margins);
+        [DllImport("dwmapi.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DwmDefWindowProc(IntPtr h, int message, IntPtr wParam, IntPtr lParam, out IntPtr result);
+        [DllImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+        public static extern int DwmGetWindowRectAttribute(IntPtr h, int attribute, out RECT rect, int size);
         public delegate void EventProc(IntPtr hook, uint ev, IntPtr hwnd, int obj, int child, uint thread, uint time);
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();

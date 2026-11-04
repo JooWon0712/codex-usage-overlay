@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace PersonalUsageOverlay
 {
-    internal sealed class SettingsWindow : Form
+    internal sealed class SettingsWindow : SettingsFrame
     {
         private readonly ISettingsHost app;
         private readonly List<Control> uiControls = new List<Control>();
@@ -26,6 +26,7 @@ namespace PersonalUsageOverlay
         private readonly bool previewMode;
         private bool updating, problemExpanded;
         private float uiScale = 1;
+        private float layoutScale = 1;
 
         public SettingsWindow(ISettingsHost owner) : this(owner, null) { }
         internal SettingsWindow(ISettingsHost owner, float? previewScale)
@@ -35,7 +36,6 @@ namespace PersonalUsageOverlay
             Text = "Codex Usage Overlay";
             ClientSize = new Size(600, 630);
             FormBorderStyle = FormBorderStyle.FixedSingle;
-            ShowIcon = true; Icon = SystemIcons.Application;
             MaximizeBox = false; MinimizeBox = true; ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
@@ -106,34 +106,48 @@ namespace PersonalUsageOverlay
             y.ValueChanged += delegate { if (!updating) app.SetCoordinates((int)x.Value, (int)y.Value); };
             uiScale = previewScale ?? Math.Max(96, Native.GetDpiForWindow(Handle)) / 96f;
             ScaleView(uiScale);
-            preview.UiScale = uiScale;
-            transparencyChoice.ScaleFactor=uiScale;
-            foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
-            foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor=uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
-            foreach (var number in new[] { x, y }) number.ScaleFactor=uiScale;
+            ScaleInputs();
             if (!previewMode)
-            {
-                var fullSize = ClientSize; var work = Screen.FromHandle(Handle).WorkingArea;
-                AutoScrollMinSize = fullSize; AutoScroll = true;
-                ClientSize = new Size(Math.Min(fullSize.Width, Math.Max(320, work.Width - 48)), Math.Min(fullSize.Height, Math.Max(360, work.Height - (int)(64 * uiScale))));
-            }
+                FitWorkArea();
             SelectPage(0); LoadPreferences(); UpdateUsage(); ApplyTheme(app.Theme);
         }
 
-        private void AddUi(Control parent, Control control) { parent.Controls.Add(control); uiControls.Add(control); }
+        private void AddUi(Control parent, Control control) { (parent == this ? ContentHost : parent).Controls.Add(control); uiControls.Add(control); }
         private void ScaleView(float scale)
         {
+            float ratio = scale / layoutScale;
             // Only controls created here are scaled. Framework-owned spinner/edit children manage themselves.
             var snapshots = new List<Tuple<Control, Rectangle, Font>>();
             foreach (var control in uiControls) snapshots.Add(Tuple.Create(control, control.Bounds, control.Font));
             foreach (var item in snapshots)
             {
-                if (item.Item1.Dock != DockStyle.Fill) item.Item1.SetBounds((int)Math.Round(item.Item2.X * scale), (int)Math.Round(item.Item2.Y * scale), (int)Math.Round(item.Item2.Width * scale), (int)Math.Round(item.Item2.Height * scale));
-                item.Item1.Font = new Font(item.Item3.FontFamily, item.Item3.Size * scale, item.Item3.Style, GraphicsUnit.Pixel);
+                if (item.Item1.Dock != DockStyle.Fill) item.Item1.SetBounds((int)Math.Round(item.Item2.X * ratio), (int)Math.Round(item.Item2.Y * ratio), (int)Math.Round(item.Item2.Width * ratio), (int)Math.Round(item.Item2.Height * ratio));
+                item.Item1.Font = new Font(item.Item3.FontFamily, item.Item3.Size * ratio, item.Item3.Style, GraphicsUnit.Pixel);
                 var button = item.Item1 as ThemedButton; if (button != null) button.ScaleFactor = scale;
                 var number = item.Item1 as ThemedNumberField; if (number != null) number.ScaleFactor = scale;
             }
-            ClientSize = new Size((int)Math.Round(600 * scale), (int)Math.Round(630 * scale));
+            SetFrameScale(scale);
+            layoutScale = uiScale = scale;
+            SetContentSize((int)Math.Round(600 * scale), (int)Math.Round(630 * scale));
+        }
+        private void ScaleInputs()
+        {
+            preview.UiScale = uiScale; transparencyChoice.ScaleFactor = uiScale;
+            foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
+            foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor = uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
+            foreach (var number in new[] { x, y }) number.ScaleFactor = uiScale;
+        }
+        private void FitWorkArea()
+        {
+            var fullSize = new Size((int)Math.Round(600 * uiScale), (int)Math.Round(630 * uiScale));
+            var work = Screen.FromHandle(Handle).WorkingArea;
+            ContentHost.AutoScrollMinSize = fullSize; ContentHost.AutoScroll = true;
+            SetContentSize(Math.Min(fullSize.Width, Math.Max(320, work.Width - 48)), Math.Min(fullSize.Height, Math.Max(360, work.Height - CaptionHeight - (int)(64 * uiScale))));
+        }
+        protected override void OnFrameDpiChanged(float scale)
+        {
+            if (pages == null) { base.OnFrameDpiChanged(scale); return; }
+            ScaleView(scale); ScaleInputs(); if (!previewMode) FitWorkArea();
         }
         private void AddLabel(Control parent, string text, int left, int top, int width, int height, float size, bool bold)
         {
@@ -251,7 +265,7 @@ namespace PersonalUsageOverlay
                 if (control is NumericUpDown || control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
             previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = theme.Muted;
-            preview.Theme = theme; ApplyCaptionTheme(); Invalidate(true);
+            preview.Theme = theme; SetFrameTheme(theme); ApplyCaptionTheme(); Invalidate(true);
         }
         private void DrawChoice(object sender, DrawItemEventArgs e)
         {

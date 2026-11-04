@@ -26,6 +26,8 @@ namespace PersonalUsageOverlay
             PositionAdjustmentChecks.Run(checks);
             BadgeZOrderChecks.Run(checks);
             SettingsBindingChecks.Run(checks);
+            SettingsFrameChecks.Run(checks);
+            SettingsDpiChecks.Run(checks);
             HeadlineLayoutChecks.Run(checks);
             ThemedPaintChecks.Run(checks);
             ThemedInputChecks.Run(checks);
@@ -96,7 +98,7 @@ namespace PersonalUsageOverlay
             bool passed = true;
             foreach (bool result in checks.Values)
                 passed &= result;
-            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks, windowOrder = BadgeZOrderChecks.Observation, layeredWindow=LayeredWindowChecks.Observation });
+            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks, windowOrder = BadgeZOrderChecks.Observation, layeredWindow=LayeredWindowChecks.Observation, settingsFrame=SettingsFrameChecks.Observation, settingsDpi=SettingsDpiChecks.Observation });
             if (output != null)
                 File.WriteAllText(output, text, new UTF8Encoding(false));
             Environment.ExitCode = passed ? 0 : 1;
@@ -232,10 +234,9 @@ namespace PersonalUsageOverlay
                     using (var window = new SettingsWindow(new SettingsPreviewHost(theme), scale))
                     {
                         window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
-                        using (var bitmap = new Bitmap(window.Width, window.Height))
+                        using (var bitmap = window.RenderClientPreview())
                         {
-                            window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.Size));
-                            bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"native-caption-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                            bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"custom-caption-client-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
                         }
                         window.Hide();
                     }
