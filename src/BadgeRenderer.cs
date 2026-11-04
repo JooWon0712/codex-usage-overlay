@@ -94,6 +94,8 @@ namespace PersonalUsageOverlay
                     else if (element.Key == "countdown")
                     {
                         text = TextOr(presentation == null ? null : presentation.CountdownText, "확인 불가");
+                        if (!normalized.Elements.Exists(item => item.Key == "weekly-reset" && item.Visible))
+                            text = "초기화 · " + text;
                         color = lowWeekly.HasValue ? theme.DangerText : theme.Accent;
                     }
                     else

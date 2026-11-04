@@ -18,7 +18,8 @@ namespace PersonalUsageOverlay
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            e.Graphics.Clear(Parent == null ? Theme.Background : Parent.BackColor);
+            using (var fill = new SolidBrush(Parent == null ? Theme.Background : Parent.BackColor))
+                e.Graphics.FillRectangle(fill, ClientRectangle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -43,7 +44,8 @@ namespace PersonalUsageOverlay
                 }
             }
             var bounds = new Rectangle((int)(22 * scale), 0, Math.Max(0, Width - (int)(22 * scale)), Height);
-            TextRenderer.DrawText(e.Graphics, Text, Font, bounds, text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, Text, Font, bounds, text, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis
+                | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform);
             if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, ClientRectangle, text, theme.Background);
         }
     }

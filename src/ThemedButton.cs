@@ -12,6 +12,7 @@ namespace PersonalUsageOverlay
         private bool mousePressed;
         private bool keyboardPressed;
         private bool defaultButton;
+        public float ScaleFactor;
 
         public ThemedButton()
         {
@@ -46,7 +47,8 @@ namespace PersonalUsageOverlay
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            e.Graphics.Clear(Parent == null ? theme.Background : Parent.BackColor);
+            using (var fill = new SolidBrush(Parent == null ? theme.Background : Parent.BackColor))
+                e.Graphics.FillRectangle(fill, ClientRectangle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -56,7 +58,7 @@ namespace PersonalUsageOverlay
                 return;
             }
 
-            float scale = Math.Max(1f, e.Graphics.DpiX / 96f);
+            float scale = ScaleFactor > 0 ? ScaleFactor : Math.Max(1f, e.Graphics.DpiX / 96f);
             bool pressed = Enabled && (keyboardPressed || (mousePressed && mouseInside));
             Color fill = !Enabled ? theme.Surface : pressed ? theme.Pressed : mouseInside ? theme.Hover : theme.Surface;
             Color text = Enabled ? theme.Text : theme.Muted;
@@ -94,7 +96,8 @@ namespace PersonalUsageOverlay
             }
 
             TextFormatFlags flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding;
+                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding
+                | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform;
             if (!UseMnemonic)
             {
                 flags |= TextFormatFlags.NoPrefix;

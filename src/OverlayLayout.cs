@@ -7,7 +7,8 @@ namespace PersonalUsageOverlay
     {
         public static Rectangle CalculateBounds(Rectangle client, float scale, Preferences preferences, TitleAnchorObservation anchor = null)
         {
-            var layout = preferences.BadgeLayout ?? new BadgeLayoutSettings();
+            var layout = preferences.BadgeLayout == null ? new BadgeLayoutSettings() : preferences.BadgeLayout.Copy();
+            layout.Normalize();
             int width = (int)Math.Round(layout.Width * scale), height = (int)Math.Round(layout.Height * scale);
             if (client.Width < width || client.Height < height) return Rectangle.Empty;
             if (preferences.Position != "sidebar")

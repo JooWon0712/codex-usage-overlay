@@ -22,7 +22,6 @@ namespace PersonalUsageOverlay
             ThemeChecks.Run(checks);
             BadgeLayoutChecks.Run(checks);
             UsagePresentationChecks.Run(checks);
-            BadgeEditorChecks.Run(checks);
             SettingsBindingChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
@@ -159,7 +158,7 @@ namespace PersonalUsageOverlay
             checks["insufficient_space_below_header_hides_badge"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,150),1.5f,preferences,anchor).IsEmpty;
             checks["partial_height_does_not_cut_reset_or_countdown"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,250),1.5f,preferences,anchor).IsEmpty;
             var large = new Preferences { BadgeLayout = new BadgeLayoutSettings { Width=600,Height=300 } };
-            checks["custom_canvas_dimensions_drive_actual_overlay_bounds"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(585,257,900,450);
+            checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(585,257,480,123);
             anchor.Status="ambiguous";
             checks["ambiguous_title_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.Status="ok"; anchor.TitleBounds=new Rectangle(80,195,199,28);
@@ -212,6 +211,34 @@ namespace PersonalUsageOverlay
                             }
                             window.Hide();
                         }
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                for (int mask = 0; mask < 8; mask++)
+                    foreach (float scale in new[] { 1f, 1.5f, 2f })
+                    {
+                        var layout = new BadgeLayoutSettings();
+                        layout.Elements.Find(item => item.Key == "indicator").Visible = (mask & 1) != 0;
+                        layout.Elements.Find(item => item.Key == "weekly-reset").Visible = (mask & 2) != 0;
+                        layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 4) != 0;
+                        layout.Normalize();
+                        string prefix = (theme.IsDark ? "dark-" : "light-") + "options-" + mask;
+                        using (var badge = new Badge { ClientSize=new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),ScaleFactor=scale,Theme=theme,LayoutSettings=layout,Presentation=samples[0].Value })
+                        using (var bitmap = new Bitmap(badge.Width,badge.Height))
+                        {
+                            badge.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));
+                            bitmap.Save(Path.Combine(directory,prefix+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                        if (mask != 0) continue;
+                        var host = new SettingsPreviewHost(theme);
+                        host.SetBadgeLayout(layout);
+                        using (var window = new SettingsWindow(host,scale))
+                        using (var bitmap = new Bitmap(window.ClientSize.Width,window.ClientSize.Height))
+                        {
+                            window.FormBorderStyle=FormBorderStyle.None;window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
+                            bitmap.SetResolution(96*scale,96*scale);
+                            window.DrawToBitmap(bitmap,new Rectangle(Point.Empty,window.ClientSize));window.Hide();
+                            bitmap.Save(Path.Combine(directory,prefix+"-settings-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                    }
         }
     }
 }
