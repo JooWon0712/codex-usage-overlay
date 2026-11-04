@@ -10,18 +10,19 @@ namespace PersonalUsageOverlay
         private readonly ISettingsHost app;
         private readonly List<Control> uiControls = new List<Control>();
         private readonly Panel pageHost = new Panel();
-        private readonly Panel overlayPage = new Panel(), positionPage = new Panel(), dataPage = new Panel();
-        private readonly ThemedButton[] pageButtons = new ThemedButton[3];
+        private readonly Panel overlayPage = new Panel(), positionPage = new Panel();
+        private readonly ThemedButton[] pageButtons = new ThemedButton[2];
         private Panel[] pages;
         private readonly BadgePreview preview = new BadgePreview();
-        private readonly ThemedCheckBox indicatorChoice = new ThemedCheckBox(), resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox();
+        private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox();
         private readonly ComboBox positionChoice = new ComboBox(), themeChoice = new ComboBox();
         private readonly NumericUpDown x = new NumericUpDown(), y = new NumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
-        private readonly TextBox detail = new TextBox();
+        private readonly ThemedButton problemToggle = new ThemedButton();
+        private readonly TextBox problemDetails = new TextBox();
         private VisualTheme theme = VisualTheme.Dark;
         private readonly bool previewMode;
-        private bool updating;
+        private bool updating, problemExpanded;
         private float uiScale = 1;
 
         public SettingsWindow(ISettingsHost owner) : this(owner, null) { }
@@ -40,14 +41,14 @@ namespace PersonalUsageOverlay
             AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
             AddLabel(this, "추가 항목을 켜고 끄면서 오버레이 미리보기를 확인하세요.", 22, 56, 556, 24, 12, false);
             pageHost.SetBounds(20, 130, 560, 380); AddUi(this, pageHost);
-            pages = new[] { overlayPage, positionPage, dataPage };
-            string[] pageNames = { "오버레이", "표시 위치 · 테마", "조회 상세" };
+            pages = new[] { overlayPage, positionPage };
+            string[] pageNames = { "오버레이", "표시 위치 · 테마" };
             for (int index = 0; index < pages.Length; index++)
             {
                 pages[index].Dock = DockStyle.Fill; AddUi(pageHost, pages[index]);
                 int selected = index;
                 var button = new ThemedButton { Text = pageNames[index], AccessibleName = pageNames[index] };
-                button.SetBounds(20 + index * 188, 96, 182, 30);
+                button.SetBounds(20 + index * 284, 96, 276, 30);
                 button.Click += delegate { SelectPage(selected); };
                 pageButtons[index] = button; AddUi(this, button);
             }
@@ -56,10 +57,16 @@ namespace PersonalUsageOverlay
             preview.SetBounds(16, 42, 520, 140); AddUi(overlayPage, preview);
             previewStatus.SetBounds(16, 192, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
             AddLabel(overlayPage, "추가 항목 표시", 16, 224, 520, 22, 12, true);
-            AddOption(indicatorChoice, "상태 아이콘", 254);
-            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 286);
-            AddOption(countdownChoice, "초기화 디데이", 318);
-            AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 352, 520, 22, 11, false);
+            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 254);
+            AddOption(countdownChoice, "초기화 디데이", 286);
+            AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 320, 520, 22, 11, false);
+            overlayPage.AutoScroll = true;
+            problemToggle.Text = "문제 확인 ▸"; problemToggle.AccessibleName = "조회 실패 원인 펼치기";
+            problemToggle.SetBounds(16, 350, 132, 28); problemToggle.Visible = false;
+            problemToggle.Click += delegate { SetProblemExpanded(!problemExpanded); }; AddUi(overlayPage, problemToggle);
+            problemDetails.Multiline = true; problemDetails.ReadOnly = true; problemDetails.ScrollBars = ScrollBars.Vertical;
+            problemDetails.SetBounds(16, 388, 520, 116); problemDetails.AccessibleName = "조회 실패 원인과 조치";
+            problemDetails.Visible = false; AddUi(overlayPage, problemDetails);
 
             AddLabel(positionPage, "표시 위치", 24, 22, 508, 23, 12, true);
             AddChoice(positionPage, positionChoice, "표시 위치", new[] { "사이드바", "세션 제목 아래" }, 24, 52, 400);
@@ -73,15 +80,11 @@ namespace PersonalUsageOverlay
             AddChoice(positionPage, themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 24, 294, 400);
             themeStatus.SetBounds(24, 334, 508, 36); AddUi(positionPage, themeStatus);
 
-            detail.Multiline = true; detail.ReadOnly = true; detail.ScrollBars = ScrollBars.Vertical;
-            detail.SetBounds(16, 16, 520, 274); detail.AccessibleName = "한도 조회 상세"; AddUi(dataPage, detail);
-            AddLabel(dataPage, "초기화 날짜와 디데이는 Windows 표시 시간대의 달력 날짜를 기준으로 합니다.", 16, 310, 520, 48, 12, false);
             footer.SetBounds(22, 530, 274, 44); footer.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); footer.Text = "최소화하면 표시를 유지합니다.\nX 또는 종료를 누르면 완전히 종료됩니다."; AddUi(this, footer);
             AddButton(this, "지금 갱신", 310, 532, 84, delegate { app.ManualRefresh(); });
             AddButton(this, "앱에서 확인", 404, 532, 86, delegate { WindowState = FormWindowState.Minimized; app.ActivateTarget(); });
             AddButton(this, "종료", 500, 532, 78, delegate { app.Quit(); });
 
-            indicatorChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             resetChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             countdownChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             positionChoice.SelectedIndexChanged += delegate { if (!updating && positionChoice.SelectedIndex >= 0) { app.SetPosition(positionChoice.SelectedIndex == 0 ? "sidebar" : Preferences.BelowTitle); LoadPreferences(); } };
@@ -91,7 +94,7 @@ namespace PersonalUsageOverlay
             uiScale = previewScale ?? Math.Max(96, Native.GetDpiForWindow(Handle)) / 96f;
             ScaleView(uiScale);
             preview.UiScale = uiScale;
-            foreach (var check in new[] { indicatorChoice, resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
+            foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
             foreach (var choice in new[] { positionChoice, themeChoice }) choice.ItemHeight = (int)Math.Round(25 * uiScale);
             if (!previewMode)
             {
@@ -149,7 +152,7 @@ namespace PersonalUsageOverlay
                 vertical.Text = side ? "세로: 창 아래 여백" : "세로: 제목 영역 아래 간격";
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
                 preview.LayoutSettings = app.Prefs.BadgeLayout;
-                indicatorChoice.Checked = IsVisible("indicator"); resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
+                resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
             }
             finally { updating = false; }
             UpdatePreviewStatus();
@@ -159,7 +162,6 @@ namespace PersonalUsageOverlay
         {
             if (updating) return;
             var layout = preview.LayoutSettings.Copy();
-            layout.Elements.Find(element => element.Key == "indicator").Visible = indicatorChoice.Checked;
             layout.Elements.Find(element => element.Key == "weekly-reset").Visible = resetChoice.Checked;
             layout.Elements.Find(element => element.Key == "countdown").Visible = countdownChoice.Checked;
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();
@@ -168,10 +170,28 @@ namespace PersonalUsageOverlay
         { previewStatus.Text = app.IsSample ? "예시 데이터 · 개발 미리보기" : "현재 조회 상태 · 항목 변경 즉시 반영"; }
         public void UpdateUsage()
         {
-            string details = app.Details.Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
-            if (detail.Text != details) detail.Text = details;
             if (!ReferenceEquals(preview.Presentation, app.Presentation)) preview.Presentation = app.Presentation;
+            UpdateProblemDetails();
             UpdatePositionStatus();
+        }
+        private void UpdateProblemDetails()
+        {
+            var presentation = app.Presentation;
+            bool failed = presentation != null && presentation.HasQueryFailure;
+            problemToggle.Visible = failed;
+            string details = failed ? presentation.FailureDetails.Replace("\r\n", "\n").Replace("\n", Environment.NewLine) : String.Empty;
+            if (problemDetails.Text != details) problemDetails.Text = details;
+            if (!failed) SetProblemExpanded(false);
+        }
+        private void SetProblemExpanded(bool expanded)
+        {
+            problemExpanded = expanded && app.Presentation != null && app.Presentation.HasQueryFailure;
+            problemToggle.Text = problemExpanded ? "문제 확인 ▾" : "문제 확인 ▸";
+            problemToggle.AccessibleName = problemExpanded ? "조회 실패 원인 접기" : "조회 실패 원인 펼치기";
+            problemDetails.Visible = problemExpanded;
+            overlayPage.AutoScrollMinSize = problemExpanded ? new Size(0, (int)Math.Round(520 * uiScale)) : Size.Empty;
+            if (problemExpanded) overlayPage.ScrollControlIntoView(problemDetails);
+            else overlayPage.AutoScrollPosition = Point.Empty;
         }
         public void UpdatePositionStatus() { positionStatus.Text = app.PositionStatus; UpdateTheme(); }
         private void SelectPage(int index)
@@ -185,6 +205,7 @@ namespace PersonalUsageOverlay
             pages[index].BringToFront();
         }
         internal void SelectPreviewPage(int index) { if (previewMode) SelectPage(index); }
+        internal void SetPreviewProblemExpanded(bool expanded) { if (previewMode) SetProblemExpanded(expanded); }
         public void UpdateTheme()
         { if (!ReferenceEquals(theme, app.Theme)) ApplyTheme(app.Theme); themeStatus.Text = app.ThemeStatus; }
         private void ApplyTheme(VisualTheme value)

@@ -18,19 +18,18 @@ namespace PersonalUsageOverlay
 
         public BadgeLayoutSettings()
         {
-            Elements = FixedElements(true, true, true);
+            Elements = FixedElements(true, true);
         }
 
         public void Normalize()
         {
             // Only these choices migrate from the retired drag editor. Rebuild the
             // geometry without mutating any list/element retained by its caller.
-            bool indicator = OptionalVisible("indicator");
             bool date = OptionalVisible("weekly-reset");
             bool countdown = OptionalVisible("countdown");
             Width = 320;
             Height = date ? 82 : 58;
-            Elements = FixedElements(indicator, date, countdown);
+            Elements = FixedElements(date, countdown);
         }
 
         public BadgeLayoutSettings Copy()
@@ -59,8 +58,6 @@ namespace PersonalUsageOverlay
 
         public static int ElementHeight(BadgeElement element)
         {
-            if (element != null && element.Key == "indicator")
-                return 18;
             if (element != null && element.Key == "countdown")
                 return 25;
             float size = ValidFontSize(element == null ? 12f : element.FontSize, 12f);
@@ -84,13 +81,11 @@ namespace PersonalUsageOverlay
             return true;
         }
 
-        private static List<BadgeElement> FixedElements(bool indicator, bool date, bool countdown)
+        private static List<BadgeElement> FixedElements(bool date, bool countdown)
         {
-            int mainX = indicator ? 32 : 10;
             return new List<BadgeElement>
             {
-                new BadgeElement { Key = "indicator", X = 10, Y = 8, Width = 18, FontSize = 12, Visible = indicator },
-                new BadgeElement { Key = "remaining", X = mainX, Y = 6, Width = (countdown ? 224 : 310) - mainX, FontSize = 14, Bold = true, Visible = true },
+                new BadgeElement { Key = "remaining", X = 10, Y = 6, Width = countdown ? 214 : 300, FontSize = 14, Bold = true, Visible = true },
                 new BadgeElement { Key = "updated", X = 10, Y = 31, Width = 300, FontSize = 11, Visible = true },
                 new BadgeElement { Key = "weekly-reset", X = 10, Y = 53, Width = 300, FontSize = 11, Visible = date },
                 new BadgeElement { Key = "countdown", X = 232, Y = 6, Width = 78, FontSize = 12, Bold = true, Visible = countdown }

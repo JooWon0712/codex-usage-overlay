@@ -9,10 +9,12 @@ namespace PersonalUsageOverlay
     // Formats an observation without reading an account or touching any window.
     internal sealed class UsagePresentation
     {
-        public readonly string MainText, DetailText, Details, ResetText, ResetDateText, CountdownText;
+        public readonly string MainText, DetailText, Details, ResetText, ResetDateText, CountdownText, FailureDetails;
+        public readonly bool HasQueryFailure;
         public readonly double? LowWeeklyRemaining;
         public readonly UsageTone Tone;
-        private UsagePresentation(string mainText, string detailText, ResetPresentation reset, string details, double? lowWeeklyRemaining, UsageTone tone)
+        private UsagePresentation(string mainText, string detailText, ResetPresentation reset, string details,
+            double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails)
         {
             MainText = mainText;
             DetailText = detailText;
@@ -22,6 +24,8 @@ namespace PersonalUsageOverlay
             Details = details;
             LowWeeklyRemaining = lowWeeklyRemaining;
             Tone = tone;
+            HasQueryFailure = hasQueryFailure;
+            FailureDetails = failureDetails;
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now)
@@ -66,7 +70,43 @@ namespace PersonalUsageOverlay
             if (state.reason != null)
                 details += "\n상태: " + FriendlyReason(state.reason);
             var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
-            return new UsagePresentation(mainText, detailText, resetText, details, lowWeekly, tone);
+            bool hasQueryFailure = IsQueryFailure(state);
+            return new UsagePresentation(mainText, detailText, resetText, details, lowWeekly, tone,
+                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty);
+        }
+
+        private static bool IsQueryFailure(UsageState state)
+        {
+            // usage-state.mjs begin/success clear an earlier failure. In-memory
+            // retry/recovery snapshots must also stay safe if an old reason remains.
+            if (state.status == "loading" || state.status == "ok")
+                return false;
+            if (state.reason == "account_changed" || state.reason == "last_update_expired")
+                return false;
+            // Expiration can also be computed locally without a worker reason.
+            if (state.status == "stale" && String.IsNullOrEmpty(state.reason))
+                return false;
+            // Worker failures use stale/unavailable. Unknown status is invalid
+            // query state, not a successful observation or an inferred live quota.
+            return true;
+        }
+
+        private static string QueryFailureDetails(UsageState state, TimeZoneInfo zone)
+        {
+            string details = "문제: " + FriendlyReason(state.reason)
+                + "\n마지막 성공: " + FailureTime(state.observedAt, zone, "없음");
+            if (!String.IsNullOrEmpty(state.attemptedAt))
+                details += "\n마지막 시도: " + FailureTime(state.attemptedAt, zone, "확인 불가");
+            return details + "\n지금 갱신을 눌러 다시 시도하세요. 계속 실패하면 Codex 로그인 상태와 연결 상태를 확인하세요.";
+        }
+
+        private static string FailureTime(string iso, TimeZoneInfo zone, string absent)
+        {
+            if (String.IsNullOrEmpty(iso))
+                return absent;
+            DateTimeOffset value, local;
+            return TryTime(iso, out value) && TryLocalTime(value, zone, out local)
+                ? local.ToString("yyyy/MM/dd HH:mm:ss zzz", CultureInfo.InvariantCulture) : "확인 불가";
         }
 
         private sealed class ResetPresentation
@@ -186,15 +226,25 @@ namespace PersonalUsageOverlay
         {
             if (reason == "account_changed")
                 return "로그인 상태가 바뀌어 다시 확인합니다";
-            if (reason.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "조회 시간 초과";
-            if (reason.IndexOf("aged", StringComparison.OrdinalIgnoreCase) >= 0 || reason.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (reason == "request_timeout")
+                return "조회 응답을 기다리는 시간이 초과되었습니다";
+            if (reason == "last_update_expired")
                 return "마지막 확인 후 시간이 지났습니다";
-            if (reason.IndexOf("process", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "조회 연결을 사용할 수 없습니다";
-            if (reason.IndexOf("missing", StringComparison.OrdinalIgnoreCase) >= 0 || reason.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "한도 데이터 확인 불가";
-            return "공식 조회 실패 (" + reason + ")";
+            if (reason == "process_start_failed")
+                return "조회 연결을 시작하지 못했습니다";
+            if (reason == "process_exited" || reason == "process_not_running" || reason == "worker_process_exited")
+                return "조회 연결이 종료되어 한도를 확인하지 못했습니다";
+            if (reason == "process_write_failed")
+                return "조회 요청을 전달하지 못했습니다";
+            if (reason == "process_read_failed")
+                return "조회 응답을 읽지 못했습니다";
+            if (reason == "usage_unavailable")
+                return "한도 데이터가 없거나 형식이 올바르지 않습니다";
+            if (reason == "invalid_arguments")
+                return "조회 연결 설정을 확인하지 못했습니다";
+            // Includes query_failed, RPC errors, and unknown future reasons. Never
+            // echo identifiers, RPC codes, paths, or an exception's original text.
+            return "공식 한도 조회를 완료하지 못했습니다";
         }
     }
 }

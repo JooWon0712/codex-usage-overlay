@@ -119,6 +119,91 @@ namespace PersonalUsageOverlay
             nullEntry.windows.Add(null);
             checks["presentation_null_state_and_window_entries_are_safe"] = UsagePresentation.Create(null, now, korea).ResetText.Contains("확인 불가")
                 && UsagePresentation.Create(nullEntry, now, korea).ResetText == display.ResetText;
+            CheckQueryFailures(checks, now, reset, korea, west);
+        }
+
+        private static void CheckQueryFailures(Dictionary<string, bool> checks, DateTimeOffset now,
+            DateTimeOffset reset, TimeZoneInfo korea, TimeZoneInfo west)
+        {
+            UsageState retry = State(now, reset.ToUnixTimeSeconds());
+            retry.status = "loading";
+            retry.reason = "request_timeout";
+            UsagePresentation loading = UsagePresentation.Create(retry, now, korea);
+            UsagePresentation firstLoad = UsagePresentation.Create(new UsageState { status = "loading" }, now, korea);
+            checks["presentation_query_initial_loading_and_retry_do_not_expose_previous_failure"] = !firstLoad.HasQueryFailure
+                && firstLoad.FailureDetails == String.Empty && firstLoad.MainText == "한도 확인 중"
+                && !loading.HasQueryFailure && loading.FailureDetails == String.Empty
+                && loading.DetailText == "갱신 중 · 마지막 09:00:00";
+
+            UsageState aged = State(now.AddMinutes(-3), reset.ToUnixTimeSeconds());
+            UsageState expired = State(now.AddMinutes(-3), reset.ToUnixTimeSeconds());
+            expired.status = "stale";
+            expired.reason = "last_update_expired";
+            UsageState simpleStale = State(now.AddMinutes(-3), reset.ToUnixTimeSeconds());
+            simpleStale.status = "stale";
+            UsageState changed = new UsageState { status = "unavailable", reason = "account_changed" };
+            bool notFailure = true;
+            foreach (UsageState observation in new[] { aged, expired, simpleStale, changed })
+            {
+                UsagePresentation result = UsagePresentation.Create(observation, now, korea);
+                notFailure &= !result.HasQueryFailure && result.FailureDetails == String.Empty;
+            }
+            checks["presentation_query_expiration_and_account_recheck_are_not_failures"] = notFailure;
+
+            bool knownWithSuccess = true, knownWithoutSuccess = true;
+            foreach (string reason in new[] { "process_start_failed", "process_exited", "process_not_running", "worker_process_exited",
+                "process_write_failed", "process_read_failed", "request_timeout", "usage_unavailable",
+                "query_failed", "invalid_arguments", "rpc_error_-32603" })
+            {
+                UsageState previous = State(now.AddMinutes(-1), reset.ToUnixTimeSeconds());
+                previous.status = "stale";
+                previous.reason = reason;
+                previous.attemptedAt = now.ToString("o", CultureInfo.InvariantCulture);
+                UsagePresentation failed = UsagePresentation.Create(previous, now, korea);
+                knownWithSuccess &= failed.HasQueryFailure && failed.FailureDetails.Contains("마지막 성공: 2026/11/04 08:59:00 +09:00")
+                    && failed.FailureDetails.Contains("마지막 시도: 2026/11/04 09:00:00 +09:00")
+                    && failed.FailureDetails.Contains("지금 갱신") && failed.FailureDetails.Contains("로그인 상태")
+                    && !failed.FailureDetails.Contains("주간 초기화") && !failed.FailureDetails.Contains("5시간 초기화")
+                    && !failed.FailureDetails.Contains("rpc_error_") && previous.status == "stale" && previous.reason == reason;
+                UsagePresentation noSuccess = UsagePresentation.Create(new UsageState { status = "unavailable", reason = reason }, now, korea);
+                knownWithoutSuccess &= noSuccess.HasQueryFailure && noSuccess.FailureDetails.Contains("마지막 성공: 없음")
+                    && !noSuccess.FailureDetails.Contains("마지막 시도:");
+            }
+            checks["presentation_query_known_failures_retain_previous_success_and_attempt_times"] = knownWithSuccess;
+            checks["presentation_query_failure_without_success_explicitly_says_none"] = knownWithoutSuccess;
+
+            UsageState timed = State(now.AddMinutes(-1), reset.ToUnixTimeSeconds());
+            timed.status = "stale";
+            timed.reason = "process_read_failed";
+            timed.attemptedAt = now.ToString("o", CultureInfo.InvariantCulture);
+            UsagePresentation western = UsagePresentation.Create(timed, now, west);
+            checks["presentation_query_failure_details_use_selected_timezone_and_date"] = western.FailureDetails.Contains("마지막 성공: 2026/11/03 15:59:00 -08:00")
+                && western.FailureDetails.Contains("마지막 시도: 2026/11/03 16:00:00 -08:00");
+            timed.status = "ok";
+            timed.observedAt = now.ToString("o", CultureInfo.InvariantCulture);
+            UsagePresentation recovered = UsagePresentation.Create(timed, now, korea);
+            checks["presentation_query_success_clears_failure_even_if_old_reason_remains"] = !recovered.HasQueryFailure
+                && recovered.FailureDetails == String.Empty && recovered.DetailText == "갱신 09:00:00 · Codex 계정"
+                && recovered.CountdownText == "D-6" && recovered.MainText == "주간 80% 남음";
+
+            string sensitive = "rpc_error_401 token=private-secret C:\\private\\auth.json exception-body";
+            UsagePresentation unknown = UsagePresentation.Create(new UsageState { status = "unknown-private-status", reason = sensitive }, now, korea);
+            checks["presentation_query_null_and_unknown_states_fail_safely_without_raw_text"] = UsagePresentation.Create(null, now, korea).HasQueryFailure
+                && UsagePresentation.Create(new UsageState(), now, korea).HasQueryFailure && unknown.HasQueryFailure
+                && !unknown.FailureDetails.Contains("private") && !unknown.FailureDetails.Contains("rpc_error")
+                && !unknown.FailureDetails.Contains("401") && !unknown.FailureDetails.Contains("exception-body")
+                && !unknown.Details.Contains(sensitive);
+            UsagePresentation missingReason = UsagePresentation.Create(new UsageState { status = "unavailable" }, now, korea);
+            checks["presentation_query_unavailable_without_reason_is_generic_failure"] = missingReason.HasQueryFailure
+                && missingReason.FailureDetails.StartsWith("문제: 공식 한도 조회를 완료하지 못했습니다", StringComparison.Ordinal);
+            UsagePresentation brokenTimes = UsagePresentation.Create(new UsageState
+            {
+                status = "unavailable", reason = "usage_unavailable", observedAt = "invalid-success-time",
+                attemptedAt = "invalid-attempt-time"
+            }, now, korea);
+            checks["presentation_query_invalid_time_fields_are_not_echoed_or_fabricated"] = brokenTimes.HasQueryFailure
+                && brokenTimes.FailureDetails.Contains("마지막 성공: 확인 불가") && brokenTimes.FailureDetails.Contains("마지막 시도: 확인 불가")
+                && !brokenTimes.FailureDetails.Contains("invalid-");
         }
 
         private static DateTimeOffset At(string iso)

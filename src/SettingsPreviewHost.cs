@@ -8,7 +8,7 @@ namespace PersonalUsageOverlay
     {
         private readonly Preferences prefs = new Preferences();
         private readonly VisualTheme theme;
-        private readonly UsagePresentation presentation;
+        private UsagePresentation presentation;
         public SettingsPreviewHost(VisualTheme theme, string position = Preferences.BelowTitle, UsagePresentation value = null)
         {
             this.theme = theme; prefs.Position = position; prefs.NormalizePosition();
@@ -18,7 +18,13 @@ namespace PersonalUsageOverlay
         {
             var now = DateTimeOffset.Parse("2026-11-04T19:59:37+09:00", CultureInfo.InvariantCulture);
             var zone = TimeZoneInfo.CreateCustomTimeZone("FixtureKST", TimeSpan.FromHours(9), "FixtureKST", "FixtureKST");
-            var state = new UsageState { status = status, observedAt = status == "loading" ? null : (status == "stale" ? now.AddMinutes(-4) : now).ToString("o"), reason = status == "stale" ? "process_timeout" : null };
+            var state = new UsageState
+            {
+                status = status,
+                observedAt = status == "loading" ? null : (status == "stale" ? now.AddMinutes(-4) : now).ToString("o"),
+                attemptedAt = status == "stale" ? now.ToString("o") : null,
+                reason = status == "stale" ? "request_timeout" : null
+            };
             if (status != "loading") state.windows.Add(new LimitWindow { limitId = "codex", window = "primary", windowDurationMins = 10080, remainingPercent = remaining, resetsAt = includeReset ? (double?)DateTimeOffset.Parse("2026-11-10T12:00:00+09:00", CultureInfo.InvariantCulture).ToUnixTimeSeconds() : null });
             return UsagePresentation.Create(state, now, zone);
         }
@@ -26,6 +32,7 @@ namespace PersonalUsageOverlay
         public string MainText { get { return presentation.MainText; } }
         public string Details { get { return presentation.Details; } }
         public UsagePresentation Presentation { get { return presentation; } }
+        internal void SetPresentation(UsagePresentation value) { presentation = value; }
         public bool IsSample { get { return true; } }
         public string PositionStatus { get { return prefs.Position == "sidebar" ? "사이드바 · 창 기준 위치" : "본문 제목 아래 · 자동 위치 확인됨"; } }
         public string ThemeStatus { get { return theme.IsDark ? "Codex · 다크 (미리보기)" : "Codex · 라이트 (미리보기)"; } }

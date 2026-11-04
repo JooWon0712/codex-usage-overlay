@@ -19,19 +19,20 @@ namespace PersonalUsageOverlay
             using (var bitmap = new Bitmap(800,400))
             using (var graphics = Graphics.FromImage(bitmap))
                 foreach (float scale in new[] {1f,1.5f,2f})
-                    for (int mask=0;mask<8;mask++)
+                    for (int mask=0;mask<4;mask++)
                         foreach (var sample in samples)
                         {
                             var layout = new BadgeLayoutSettings();
-                            layout.Elements.Find(item => item.Key == "indicator").Visible = (mask & 1) != 0;
-                            layout.Elements.Find(item => item.Key == "weekly-reset").Visible = (mask & 2) != 0;
-                            layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 4) != 0;
+                            layout.Elements.Find(item => item.Key == "weekly-reset").Visible = (mask & 1) != 0;
+                            layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 2) != 0;
                             layout.Normalize();
                             var bounds = new Rectangle(17,23,(int)Math.Round(layout.Width*scale),(int)Math.Round(layout.Height*scale));
                             var placement = BadgeRenderer.CalculateHeadline(graphics,bounds,scale,sample,layout);
                             inside &= bounds.Contains(placement.Main) && placement.Main.Width > 0 && placement.Main.Height > 0;
-                            compact &= layout.Height == ((mask & 2) != 0 ? 82 : 58);
-                            if ((mask & 4) == 0) { hidden &= placement.Countdown.IsEmpty; continue; }
+                            compact &= layout.Height == ((mask & 1) != 0 ? 82 : 58);
+                            inside &= layout.Elements.Count == 4 && !layout.Elements.Exists(item => item.Key == "indicator")
+                                && placement.Main.Left == bounds.Left + (int)Math.Round(10 * scale);
+                            if ((mask & 2) == 0) { hidden &= placement.Countdown.IsEmpty; continue; }
                             inside &= bounds.Contains(placement.Countdown) && placement.Countdown.Width > 0;
                             noOverlap &= !placement.Main.IntersectsWith(placement.Countdown) && placement.Main.Top == placement.Countdown.Top && placement.Main.Height == placement.Countdown.Height;
                             nextToTitle &= placement.Countdown.Left - placement.Main.Right == (int)Math.Round(8*scale);

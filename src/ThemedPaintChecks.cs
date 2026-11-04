@@ -66,7 +66,7 @@ namespace PersonalUsageOverlay
             using (var choice = new ThemedCheckBox
             {
                 Theme = theme, ScaleFactor = scale, Enabled = enabled, Checked = check,
-                Text = "상태 아이콘 표시", Font = font, Size = SizeFor(240, 26, scale)
+                Text = "초기화 디데이", Font = font, Size = SizeFor(240, 26, scale)
             })
             {
                 parent.Controls.Add(choice);
@@ -155,7 +155,7 @@ namespace PersonalUsageOverlay
         private static Control PaintControl(VisualTheme theme, float scale, bool checkbox, Font font)
         {
             if (checkbox)
-                return new ThemedCheckBox { Theme = theme, ScaleFactor = scale, Font = font, Text = "상태 아이콘 표시", Size = SizeFor(180, 32, scale) };
+                return new ThemedCheckBox { Theme = theme, ScaleFactor = scale, Font = font, Text = "초기화 디데이", Size = SizeFor(180, 32, scale) };
             return new ThemedButton { Theme = theme, ScaleFactor = scale, Font = font, Text = "한도 표시", Size = SizeFor(180, 32, scale) };
         }
 

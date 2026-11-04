@@ -11,12 +11,11 @@ namespace PersonalUsageOverlay
             var serializer = new JavaScriptSerializer();
             var defaults = new BadgeLayoutSettings();
             checks["badge_layout_default_fixed_geometry_and_order"] = defaults.Width == 320 && defaults.Height == 82
-                && defaults.Elements.Count == 5
-                && Is(defaults.Elements[0], "indicator", 10, 8, 18, 12f, false, true)
-                && Is(defaults.Elements[1], "remaining", 32, 6, 192, 14f, true, true)
-                && Is(defaults.Elements[2], "updated", 10, 31, 300, 11f, false, true)
-                && Is(defaults.Elements[3], "weekly-reset", 10, 53, 300, 11f, false, true)
-                && Is(defaults.Elements[4], "countdown", 232, 6, 78, 12f, true, true);
+                && defaults.Elements.Count == 4
+                && Is(defaults.Elements[0], "remaining", 10, 6, 214, 14f, true, true)
+                && Is(defaults.Elements[1], "updated", 10, 31, 300, 11f, false, true)
+                && Is(defaults.Elements[2], "weekly-reset", 10, 53, 300, 11f, false, true)
+                && Is(defaults.Elements[3], "countdown", 232, 6, 78, 12f, true, true);
 
             var absent = new BadgeLayoutSettings { Width = Int32.MinValue, Height = Int32.MaxValue, Elements = null };
             absent.Normalize();
@@ -44,47 +43,46 @@ namespace PersonalUsageOverlay
             };
             var legacy = new BadgeLayoutSettings { Width = 600, Height = 300, Elements = oldElements };
             legacy.Normalize();
-            checks["badge_layout_first_known_option_wins_and_duplicates_unknowns_are_discarded"] = legacy.Elements.Count == 5
-                && !Find(legacy, "indicator").Visible && Find(legacy, "weekly-reset").Visible && !Find(legacy, "countdown").Visible;
+            checks["badge_layout_first_known_option_wins_and_duplicates_unknowns_are_discarded"] = legacy.Elements.Count == 4
+                && !legacy.Elements.Exists(element => element.Key == "indicator")
+                && Find(legacy, "weekly-reset").Visible && !Find(legacy, "countdown").Visible;
             checks["badge_layout_drag_coordinates_fonts_canvas_and_z_order_are_retired"] = legacy.Width == 320 && legacy.Height == 82
-                && Is(legacy.Elements[0], "indicator", 10, 8, 18, 12f, false, false)
-                && Is(legacy.Elements[1], "remaining", 10, 6, 300, 14f, true, true)
-                && Is(legacy.Elements[2], "updated", 10, 31, 300, 11f, false, true)
-                && Is(legacy.Elements[3], "weekly-reset", 10, 53, 300, 11f, false, true)
-                && Is(legacy.Elements[4], "countdown", 232, 6, 78, 12f, true, false);
+                && Is(legacy.Elements[0], "remaining", 10, 6, 300, 14f, true, true)
+                && Is(legacy.Elements[1], "updated", 10, 31, 300, 11f, false, true)
+                && Is(legacy.Elements[2], "weekly-reset", 10, 53, 300, 11f, false, true)
+                && Is(legacy.Elements[3], "countdown", 232, 6, 78, 12f, true, false);
             checks["badge_layout_normalize_does_not_mutate_retained_input_list_or_elements"] = oldElements.Count == 9
                 && oldElements[0] == null && remaining.X == Int32.MaxValue && remaining.Y == Int32.MinValue
                 && remaining.Width == Int32.MaxValue && Single.IsNaN(remaining.FontSize) && !remaining.Visible
                 && !Object.ReferenceEquals(oldElements, legacy.Elements) && !Object.ReferenceEquals(remaining, Find(legacy, "remaining"));
 
             bool fit = true, nonoverlap = true, size = true, required = true, expanded = true, inline = true, idempotent = true;
-            for (int mask = 0; mask < 8; mask++)
+            for (int mask = 0; mask < 4; mask++)
             {
                 var layout = new BadgeLayoutSettings();
-                Find(layout, "indicator").Visible = (mask & 1) != 0;
-                Find(layout, "weekly-reset").Visible = (mask & 2) != 0;
-                Find(layout, "countdown").Visible = (mask & 4) != 0;
+                Find(layout, "weekly-reset").Visible = (mask & 1) != 0;
+                Find(layout, "countdown").Visible = (mask & 2) != 0;
                 Find(layout, "remaining").Visible = false;
                 Find(layout, "updated").Visible = false;
                 layout.Normalize();
                 fit &= VisibleElementsFit(layout);
                 nonoverlap &= VisibleElementsDoNotOverlap(layout);
-                size &= layout.Width == 320 && layout.Height == ((mask & 2) == 0 ? 58 : 82);
+                size &= layout.Width == 320 && layout.Height == ((mask & 1) == 0 ? 58 : 82)
+                    && layout.Elements.Count == 4 && !layout.Elements.Exists(element => element.Key == "indicator");
                 required &= Find(layout, "remaining").Visible && Find(layout, "updated").Visible;
-                int mainX = (mask & 1) == 0 ? 10 : 32;
-                expanded &= Find(layout, "remaining").X == mainX
-                    && Find(layout, "remaining").X + Find(layout, "remaining").Width == ((mask & 4) == 0 ? 310 : 224)
+                expanded &= Find(layout, "remaining").X == 10
+                    && Find(layout, "remaining").X + Find(layout, "remaining").Width == ((mask & 2) == 0 ? 310 : 224)
                     && Find(layout, "weekly-reset").X == 10 && Find(layout, "weekly-reset").Width == 300;
                 BadgeElement remainingInline = Find(layout, "remaining"), countdownInline = Find(layout, "countdown");
                 inline &= countdownInline.X == 232 && countdownInline.Y == remainingInline.Y && countdownInline.Width == 78
                     && BadgeLayoutSettings.ElementHeight(countdownInline) == BadgeLayoutSettings.ElementHeight(remainingInline)
-                    && ((mask & 4) == 0 || countdownInline.X - remainingInline.X - remainingInline.Width == 8);
+                    && ((mask & 2) == 0 || countdownInline.X - remainingInline.X - remainingInline.Width == 8);
                 string first = serializer.Serialize(layout);
                 layout.Normalize();
                 idempotent &= first == serializer.Serialize(layout);
             }
-            checks["badge_layout_all_eight_toggle_combinations_fit_full_visible_height"] = fit && size;
-            checks["badge_layout_all_eight_toggle_combinations_have_no_overlapping_elements"] = nonoverlap;
+            checks["badge_layout_all_four_toggle_combinations_fit_without_an_icon_element"] = fit && size;
+            checks["badge_layout_all_four_toggle_combinations_have_no_overlapping_elements"] = nonoverlap;
             checks["badge_layout_remaining_and_updated_cannot_be_hidden"] = required;
             checks["badge_layout_main_reserves_countdown_column_only_when_visible_and_date_stays_full_width"] = expanded;
             checks["badge_layout_countdown_shares_heading_center_and_keeps_reserved_gap_in_all_options"] = inline;
@@ -102,6 +100,16 @@ namespace PersonalUsageOverlay
                 && Is(Find(formerBottomRow, "remaining"), "remaining", 10, 6, 214, 14f, true, true)
                 && Is(Find(formerBottomRow, "countdown"), "countdown", 232, 6, 78, 12f, true, true)
                 && !Find(formerBottomRow, "weekly-reset").Visible;
+            bool ignoredIcons = true;
+            foreach (bool oldVisible in new[] { true, false })
+            {
+                var oldIcon = new BadgeLayoutSettings();
+                oldIcon.Elements.Insert(0, new BadgeElement { Key = "indicator", X = 10, Width = 18, Visible = oldVisible });
+                oldIcon.Normalize();
+                ignoredIcons &= oldIcon.Elements.Count == 4 && !oldIcon.Elements.Exists(element => element.Key == "indicator")
+                    && Is(Find(oldIcon, "remaining"), "remaining", 10, 6, 214, 14f, true, true);
+            }
+            checks["badge_layout_legacy_visible_or_hidden_icons_are_removed_without_reserved_space"] = ignoredIcons;
 
             var source = new BadgeLayoutSettings
             {
@@ -128,8 +136,7 @@ namespace PersonalUsageOverlay
             checks["badge_layout_copy_preserves_null_list_until_normalized"] = retainedNull && missingList.Elements == null
                 && serializer.Serialize(missingCopy) == serializer.Serialize(defaults);
             checks["badge_layout_element_height_stays_finite_and_keeps_fixed_rows_separate"] = BadgeLayoutSettings.ElementHeight(
-                new BadgeElement { Key = "indicator", FontSize = Single.NaN }) == 18
-                && BadgeLayoutSettings.ElementHeight(new BadgeElement { Key = "countdown", FontSize = Single.NaN }) == 25
+                new BadgeElement { Key = "countdown", FontSize = Single.NaN }) == 25
                 && BadgeLayoutSettings.ElementHeight(null) == 21
                 && BadgeLayoutSettings.ElementHeight(new BadgeElement { FontSize = Single.PositiveInfinity }) == 21
                 && BadgeLayoutSettings.ElementHeight(new BadgeElement { FontSize = Single.MinValue }) > 0
@@ -159,7 +166,7 @@ namespace PersonalUsageOverlay
                     || element.Y + BadgeLayoutSettings.ElementHeight(element) > layout.Height
                     || Single.IsNaN(element.FontSize) || Single.IsInfinity(element.FontSize)) return false;
             }
-            return keys.Count == 5;
+            return keys.Count == 4 && !keys.Contains("indicator");
         }
 
         private static bool VisibleElementsDoNotOverlap(BadgeLayoutSettings layout)

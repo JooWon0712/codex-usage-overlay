@@ -205,7 +205,7 @@ namespace PersonalUsageOverlay
                         {
                             window.FormBorderStyle=FormBorderStyle.None;window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
                             bitmap.SetResolution(96*scale,96*scale);
-                            for(int page=0;page<3;page++)
+                            for(int page=0;page<2;page++)
                             {
                                 window.SelectPreviewPage(page);window.PerformLayout();Application.DoEvents();
                                 window.DrawToBitmap(bitmap,new Rectangle(Point.Empty,window.ClientSize));
@@ -214,13 +214,12 @@ namespace PersonalUsageOverlay
                             window.Hide();
                         }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
-                for (int mask = 0; mask < 8; mask++)
+                for (int mask = 0; mask < 4; mask++)
                     foreach (float scale in new[] { 1f, 1.5f, 2f })
                     {
                         var layout = new BadgeLayoutSettings();
-                        layout.Elements.Find(item => item.Key == "indicator").Visible = (mask & 1) != 0;
-                        layout.Elements.Find(item => item.Key == "weekly-reset").Visible = (mask & 2) != 0;
-                        layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 4) != 0;
+                        layout.Elements.Find(item => item.Key == "weekly-reset").Visible = (mask & 1) != 0;
+                        layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 2) != 0;
                         layout.Normalize();
                         string prefix = (theme.IsDark ? "dark-" : "light-") + "options-" + mask;
                         using (var badge = new Badge { ClientSize=new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),ScaleFactor=scale,Theme=theme,LayoutSettings=layout,Presentation=samples[0].Value })
@@ -241,6 +240,27 @@ namespace PersonalUsageOverlay
                             bitmap.Save(Path.Combine(directory,prefix+"-settings-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
                         }
                     }
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                foreach (float scale in new[] { 1f, 1.5f, 2f })
+                {
+                    var host = new SettingsPreviewHost(theme, Preferences.BelowTitle, samples[3].Value);
+                    using (var window = new SettingsWindow(host, scale))
+                    using (var bitmap = new Bitmap(window.ClientSize.Width, window.ClientSize.Height))
+                    {
+                        window.FormBorderStyle=FormBorderStyle.None;window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
+                        bitmap.SetResolution(96*scale,96*scale);
+                        string prefix = (theme.IsDark ? "dark-" : "light-") + "problem-";
+                        foreach (string stage in new[] { "collapsed", "expanded", "recovered" })
+                        {
+                            if (stage == "expanded") window.SetPreviewProblemExpanded(true);
+                            if (stage == "recovered") { host.SetPresentation(samples[0].Value); window.UpdateUsage(); }
+                            window.PerformLayout(); Application.DoEvents();
+                            window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.ClientSize));
+                            bitmap.Save(Path.Combine(directory, prefix + stage + "-" + (int)(scale*100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                        window.Hide();
+                    }
+                }
         }
     }
 }

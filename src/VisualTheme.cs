@@ -17,9 +17,7 @@ namespace PersonalUsageOverlay
             Color.FromArgb(0x91, 0xc9, 0xb6),
             Color.FromArgb(0xe8, 0xb9, 0x79),
             Color.FromArgb(0xed, 0x74, 0x82),
-            Color.FromArgb(0xff, 0xb3, 0xbf),
-            Color.FromArgb(0x49, 0x3b, 0x42),
-            Color.FromArgb(0x99, 0x84, 0x8c));
+            Color.FromArgb(0xff, 0xb3, 0xbf));
 
         public static readonly VisualTheme Light = new VisualTheme(
             false,
@@ -34,9 +32,7 @@ namespace PersonalUsageOverlay
             Color.FromArgb(0x24, 0x6c, 0x57),
             Color.FromArgb(0x81, 0x58, 0x0c),
             Color.FromArgb(0xb5, 0x2a, 0x42),
-            Color.FromArgb(0x9e, 0x20, 0x38),
-            Color.FromArgb(0xe4, 0xcd, 0xd3),
-            Color.FromArgb(0xa0, 0x73, 0x80));
+            Color.FromArgb(0x9e, 0x20, 0x38));
 
         public readonly bool IsDark;
         public readonly Color Background;
@@ -51,12 +47,10 @@ namespace PersonalUsageOverlay
         public readonly Color Attention;
         public readonly Color Danger;
         public readonly Color DangerText;
-        public readonly Color RingTrack;
-        public readonly Color RingCenter;
 
         private VisualTheme(bool isDark, Color background, Color surface, Color border,
             Color text, Color muted, Color hover, Color pressed, Color accent, Color success,
-            Color attention, Color danger, Color dangerText, Color ringTrack, Color ringCenter)
+            Color attention, Color danger, Color dangerText)
         {
             IsDark = isDark;
             Background = background;
@@ -71,8 +65,6 @@ namespace PersonalUsageOverlay
             Attention = attention;
             Danger = danger;
             DangerText = dangerText;
-            RingTrack = ringTrack;
-            RingCenter = ringCenter;
         }
 
         public static VisualTheme For(bool dark, bool highContrast)
@@ -89,7 +81,7 @@ namespace PersonalUsageOverlay
             return new VisualTheme(background.GetBrightness() < 0.5f,
                 background, background, foreground, foreground, foreground,
                 background, background, SystemColors.Highlight, foreground,
-                foreground, foreground, foreground, foreground, foreground);
+                foreground, foreground, foreground);
         }
     }
 }

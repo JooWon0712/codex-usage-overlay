@@ -106,12 +106,6 @@ namespace PersonalUsageOverlay
                         bounds.Top + logical.Top * scale, logical.Width * scale, logical.Height * scale);
                     if (element.Key == "remaining") physical = headline.Main;
                     else if (element.Key == "countdown") physical = headline.Countdown;
-                    if (element.Key == "indicator")
-                    {
-                        DrawIndicator(g, physical, scale, theme, stateColor, lowWeekly);
-                        continue;
-                    }
-
                     string text;
                     Color color;
                     if (element.Key == "remaining")
@@ -152,53 +146,6 @@ namespace PersonalUsageOverlay
             finally
             {
                 g.Restore(saved);
-            }
-        }
-
-        private static void DrawIndicator(Graphics g, RectangleF bounds, float scale, VisualTheme theme,
-            Color stateColor, double? lowWeekly)
-        {
-            float unit = Math.Min(bounds.Width / 18f, scale);
-            if (unit <= 0)
-                return;
-            float centerX = bounds.Left + bounds.Width / 2f;
-            float centerY = bounds.Top + bounds.Height / 2f;
-            if (!lowWeekly.HasValue)
-            {
-                using (Brush dot = new SolidBrush(stateColor))
-                    g.FillEllipse(dot, centerX - 2.5f * unit, centerY - 2.5f * unit, 5f * unit, 5f * unit);
-                return;
-            }
-
-            var ring = new RectangleF(centerX - 7.5f * unit, centerY - 7.5f * unit, 15f * unit, 15f * unit);
-            using (Pen track = new Pen(theme.RingTrack, 2f * unit))
-                g.DrawEllipse(track, ring);
-            using (Pen arc = new Pen(stateColor, 2f * unit))
-            {
-                arc.StartCap = LineCap.Round;
-                arc.EndCap = LineCap.Round;
-                if (lowWeekly.Value > 0)
-                    g.DrawArc(arc, ring, -90f, (float)(360d * lowWeekly.Value / 100d));
-            }
-
-            if (lowWeekly.Value == 0)
-            {
-                using (Pen mark = new Pen(stateColor, 1.6f * unit))
-                {
-                    g.DrawLine(mark, centerX, centerY - 4f * unit, centerX, centerY);
-                    g.DrawLine(mark, centerX, centerY + 2.5f * unit, centerX, centerY + 3f * unit);
-                }
-            }
-            else
-            {
-                using (Brush center = new SolidBrush(theme.RingCenter))
-                    g.FillPolygon(center, new[]
-                    {
-                        new PointF(centerX, centerY - 3.5f * unit),
-                        new PointF(centerX + 3.5f * unit, centerY),
-                        new PointF(centerX, centerY + 3.5f * unit),
-                        new PointF(centerX - 3.5f * unit, centerY)
-                    });
             }
         }
 
