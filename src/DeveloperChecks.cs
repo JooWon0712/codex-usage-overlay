@@ -269,6 +269,21 @@ namespace PersonalUsageOverlay
                                 { graphics.Clear(Color.FromArgb(13,17,23)); graphics.DrawImageUnscaled(bitmap,Point.Empty); }
                                 composite.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"on-codex-transparency-"+transparency+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
                             }
+                            foreach (bool darkChat in new[] { true, false })
+                                using (var chat = new Bitmap(bitmap.Width, bitmap.Height))
+                                {
+                                    using (Graphics graphics = Graphics.FromImage(chat))
+                                    using (var font = new Font("Segoe UI", 14 * scale, GraphicsUnit.Pixel))
+                                    using (Brush ink = new SolidBrush(darkChat ? Color.FromArgb(210, 216, 222) : Color.FromArgb(48, 55, 64)))
+                                    {
+                                        graphics.Clear(darkChat ? Color.FromArgb(13, 17, 23) : Color.FromArgb(243, 244, 246));
+                                        for (float y = 0; y < chat.Height; y += 24 * scale)
+                                            graphics.DrawString("이전 메시지 · 작업 결과를 확인하고 있습니다.", font, ink, 0, y);
+                                        graphics.DrawImageUnscaled(bitmap, Point.Empty);
+                                    }
+                                    chat.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + (darkChat ? "on-dark-chat-" : "on-light-chat-")
+                                        + "transparency-" + transparency + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                                }
                         }
                         if(transparency==50)
                         {

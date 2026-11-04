@@ -115,8 +115,8 @@ namespace PersonalUsageOverlay
         private static void CheckTransparencyBindings(Dictionary<string, bool> checks)
         {
             var host = new SettingsPreviewHost(VisualTheme.Dark);
-            host.Prefs.BadgeLayout.BackgroundTransparency = 37;
             host.Prefs.NormalizePosition();
+            host.Prefs.BadgeLayout.BackgroundTransparency = 82;
             BadgeLayoutSettings saved = host.Prefs.BadgeLayout;
             using (var window = new SettingsWindow(host, 1f))
             {
@@ -130,13 +130,14 @@ namespace PersonalUsageOverlay
                 string cachedText = PreviewText(cachedPreview), cachedLabel = previewLabel.Text;
                 window.LoadPreferences();
                 checks["settings_background_transparency_loads_saved_value_without_saving_or_showing"] = !window.Visible
-                    && transparency.Minimum == 0 && transparency.Maximum == 100 && transparency.Value == 37
-                    && transparencyLabel.Text.Contains("37") && preview.LayoutSettings.BackgroundTransparency == 37
+                    && transparency.Minimum == 0 && transparency.Maximum == 10 && transparency.Value == 8
+                    && transparencyLabel.Text.Contains("80%") && preview.LayoutSettings.BackgroundTransparency == 80
+                    && host.Prefs.BadgeLayout.BackgroundTransparency == 80
                     && Object.ReferenceEquals(saved, host.Prefs.BadgeLayout) && OptionsMatch(preview, host, true, true);
 
                 reset.Checked = countdown.Checked = false;
-                transparency.Value = 50;
-                checks["settings_background_transparency_slider_updates_independent_preview_and_preferences"] = transparency.Value == 50
+                transparency.Value = 5;
+                checks["settings_background_transparency_slider_updates_independent_preview_and_preferences"] = transparency.Value == 5
                     && preview.LayoutSettings.BackgroundTransparency == 50 && host.Prefs.BadgeLayout.BackgroundTransparency == 50
                     && !Object.ReferenceEquals(preview.LayoutSettings, host.Prefs.BadgeLayout) && transparencyLabel.Text.Contains("50")
                     && OptionsMatch(preview, host, false, false) && preview.LayoutSettings.Height == 58
@@ -144,24 +145,36 @@ namespace PersonalUsageOverlay
 
                 transparency.Value = 0;
                 bool opaque = preview.LayoutSettings.BackgroundTransparency == 0 && host.Prefs.BadgeLayout.BackgroundTransparency == 0;
-                transparency.Value = 100;
+                transparency.Value = 10;
                 checks["settings_background_transparency_endpoints_preserve_choices_and_example"] = opaque
                     && preview.LayoutSettings.BackgroundTransparency == 100 && host.Prefs.BadgeLayout.BackgroundTransparency == 100
                     && transparencyLabel.Text.Contains("100") && OptionsMatch(preview, host, false, false)
                     && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
 
                 BadgeLayoutSettings external = host.Prefs.BadgeLayout.Copy();
-                external.BackgroundTransparency = 17;
+                external.BackgroundTransparency = 85;
                 host.SetBadgeLayout(external);
                 BadgeLayoutSettings beforeReload = host.Prefs.BadgeLayout;
                 window.LoadPreferences();
-                bool loaded = transparency.Value == 17 && preview.LayoutSettings.BackgroundTransparency == 17
-                    && host.Prefs.BadgeLayout.BackgroundTransparency == 17 && transparencyLabel.Text.Contains("17")
-                    && Object.ReferenceEquals(beforeReload, host.Prefs.BadgeLayout);
-                transparency.Value = 23;
+                bool loaded = transparency.Value == 9 && preview.LayoutSettings.BackgroundTransparency == 90
+                    && host.Prefs.BadgeLayout.BackgroundTransparency == 90 && transparencyLabel.Text.Contains("90%")
+                    && external.BackgroundTransparency == 85 && Object.ReferenceEquals(beforeReload, host.Prefs.BadgeLayout);
+                transparency.Value = 2;
                 checks["settings_background_transparency_model_reload_and_slider_save_work_both_directions"] = loaded
-                    && preview.LayoutSettings.BackgroundTransparency == 23 && host.Prefs.BadgeLayout.BackgroundTransparency == 23
-                    && transparencyLabel.Text.Contains("23") && OptionsMatch(preview, host, false, false)
+                    && preview.LayoutSettings.BackgroundTransparency == 20 && host.Prefs.BadgeLayout.BackgroundTransparency == 20
+                    && transparencyLabel.Text.Contains("20%") && OptionsMatch(preview, host, false, false)
+                    && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
+                bool elevenSteps = transparency.Minimum == 0 && transparency.Maximum == 10
+                    && transparency.SmallChange == 1 && transparency.LargeChange == 1;
+                for (int step = 0; step <= 10; step++)
+                {
+                    transparency.Value = step;
+                    int percent = step * 10;
+                    elevenSteps &= preview.LayoutSettings.BackgroundTransparency == percent && host.Prefs.BadgeLayout.BackgroundTransparency == percent
+                        && transparencyLabel.Text.Contains(percent.ToString(CultureInfo.InvariantCulture) + "%")
+                        && OptionsMatch(preview, host, false, false);
+                }
+                checks["settings_background_transparency_native_keyboard_and_mouse_range_has_only_eleven_percent_steps"] = elevenSteps
                     && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
             }
         }

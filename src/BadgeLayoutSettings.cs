@@ -30,7 +30,8 @@ namespace PersonalUsageOverlay
             bool countdown = OptionalVisible("countdown");
             Width = 320;
             Height = date ? 82 : 58;
-            BackgroundTransparency = Math.Max(0, Math.Min(100, BackgroundTransparency));
+            int transparency = Math.Max(0, Math.Min(100, BackgroundTransparency));
+            BackgroundTransparency = ((transparency + 5) / 10) * 10;
             Elements = FixedElements(date, countdown);
         }
 

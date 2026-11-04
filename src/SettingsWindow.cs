@@ -62,7 +62,9 @@ namespace PersonalUsageOverlay
             preview.SetBounds(16, 42, 520, 116); AddUi(overlayPage, preview);
             previewStatus.SetBounds(16, 162, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
             transparencyStatus.SetBounds(16,194,520,24); AddUi(overlayPage,transparencyStatus);
-            transparencyChoice.Minimum=0; transparencyChoice.Maximum=100; transparencyChoice.SmallChange=1; transparencyChoice.LargeChange=10;
+            // The native control has eleven positions, so every mouse/keyboard
+            // value maps to a supported ten-percent step without event re-entry.
+            transparencyChoice.Minimum=0; transparencyChoice.Maximum=10; transparencyChoice.SmallChange=1; transparencyChoice.LargeChange=1;
             transparencyChoice.TickStyle=TickStyle.None; transparencyChoice.AutoSize=false; transparencyChoice.AccessibleName="배경 투명도";
             transparencyChoice.SetBounds(16,220,520,30); AddUi(overlayPage,transparencyChoice);
             AddLabel(overlayPage, "추가 항목 표시", 16, 262, 520, 24, 14, true);
@@ -169,8 +171,11 @@ namespace PersonalUsageOverlay
                 horizontal.Text = side ? "가로: 창 왼쪽에서" : "가로: 제목 왼쪽 보정";
                 vertical.Text = side ? "세로: 창 아래 여백" : "세로: 제목 영역 아래 간격";
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
+                if (app.Prefs.BadgeLayout == null) app.Prefs.BadgeLayout = new BadgeLayoutSettings();
+                // Migrate legacy percentages in memory only; loading never saves.
+                app.Prefs.BadgeLayout.Normalize();
                 preview.LayoutSettings = app.Prefs.BadgeLayout;
-                transparencyChoice.Value=preview.LayoutSettings.BackgroundTransparency;
+                transparencyChoice.Value=preview.LayoutSettings.BackgroundTransparency / 10;
                 resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
             }
             finally { updating = false; }
@@ -181,7 +186,7 @@ namespace PersonalUsageOverlay
         {
             if (updating) return;
             var layout = preview.LayoutSettings.Copy();
-            layout.BackgroundTransparency=transparencyChoice.Value;
+            layout.BackgroundTransparency=transparencyChoice.Value * 10;
             layout.Elements.Find(element => element.Key == "weekly-reset").Visible = resetChoice.Checked;
             layout.Elements.Find(element => element.Key == "countdown").Visible = countdownChoice.Checked;
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();
@@ -189,7 +194,8 @@ namespace PersonalUsageOverlay
         private void UpdatePreviewStatus()
         {
             previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준";
-            transparencyStatus.Text="배경 투명도 · "+transparencyChoice.Value+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명":" · 글자는 그대로 표시");
+            transparencyStatus.Text="배경 투명도 · "+(transparencyChoice.Value * 10)+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명"
+                : BadgeRenderer.UsesTextBacking(app.Theme,false)?" · 라이트 문구 바탕 유지":" · 글자는 그대로 표시");
         }
         public void UpdateUsage()
         {

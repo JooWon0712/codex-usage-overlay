@@ -165,6 +165,19 @@ namespace PersonalUsageOverlay
             }
             checks["badge_background_transparency_clamps_invalid_extremes_without_overflow"] = clamped;
 
+            int[] legacyValues = { 0, 4, 5, 9, 14, 15, 54, 55, 82, 84, 85, 94, 95, 100 };
+            int[] expectedValues = { 0, 0, 10, 10, 10, 20, 50, 60, 80, 80, 90, 90, 100, 100 };
+            bool rounded = true;
+            for (int index = 0; index < legacyValues.Length; index++)
+            {
+                var layout = new BadgeLayoutSettings { BackgroundTransparency = legacyValues[index] };
+                layout.Normalize();
+                rounded &= layout.BackgroundTransparency == expectedValues[index];
+                layout.Normalize();
+                rounded &= layout.BackgroundTransparency == expectedValues[index];
+            }
+            checks["badge_background_transparency_rounds_to_tens_with_midpoints_up_and_is_idempotent"] = rounded;
+
             var source = new BadgeLayoutSettings { BackgroundTransparency = Int32.MaxValue };
             BadgeLayoutSettings copy = source.Copy();
             bool rawPreserved = copy.BackgroundTransparency == Int32.MaxValue;
@@ -179,6 +192,16 @@ namespace PersonalUsageOverlay
             legacy.Normalize();
             checks["badge_background_transparency_missing_legacy_json_stays_opaque_and_keeps_choices"] = legacy.BackgroundTransparency == 0
                 && !Find(legacy, "weekly-reset").Visible && Find(legacy, "countdown").Visible && legacy.Height == 58;
+            bool oldPercentages = true;
+            foreach (int value in new[] { 82, 85 })
+            {
+                BadgeLayoutSettings restored = serializer.Deserialize<BadgeLayoutSettings>("{\"BackgroundTransparency\":" + value
+                    + ",\"Elements\":[{\"Key\":\"weekly-reset\",\"Visible\":false},{\"Key\":\"countdown\",\"Visible\":true}]}");
+                restored.Normalize();
+                oldPercentages &= restored.BackgroundTransparency == (value == 82 ? 80 : 90)
+                    && !Find(restored, "weekly-reset").Visible && Find(restored, "countdown").Visible;
+            }
+            checks["badge_background_transparency_legacy_json_82_and_85_migrate_without_changing_options"] = oldPercentages;
 
             bool roundTrips = true;
             for (int mask = 0; mask < 4; mask++)

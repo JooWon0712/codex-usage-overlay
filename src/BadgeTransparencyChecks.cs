@@ -11,6 +11,8 @@ namespace PersonalUsageOverlay
 {
     internal static class BadgeTransparencyChecks
     {
+        private static readonly int[] PercentSteps = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 };
+
         public static void Run(Dictionary<string, bool> checks)
         {
             checks["badge_transparency_percent_has_exact_background_alpha"] = BadgeRenderer.BackgroundAlpha(0, false) == 255
@@ -34,6 +36,7 @@ namespace PersonalUsageOverlay
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
                     CheckBitmaps(checks, theme, scale, presentation, highContrast);
             CheckEveryGlyphPixel(checks, started, zone, highContrast);
+            CheckLightOptions(checks, started, zone, highContrast);
         }
 
         private static void CheckEveryGlyphPixel(Dictionary<string, bool> checks, DateTimeOffset started,
@@ -41,6 +44,9 @@ namespace PersonalUsageOverlay
         {
             bool formats = true, coverage = true, colors = true, outline = true, bounds = true,
                 invariant = true, composited = true, backgrounds = true;
+            bool backingBounds = true, backingRows = true, opaqueGlyphs = true, backedColors = true,
+                backedComposite = true, sharedHeadline = true;
+            int combinations = 0;
             UsagePresentation[] states = GlyphStates(started, zone);
             foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
@@ -60,7 +66,14 @@ namespace PersonalUsageOverlay
                                     && baselineBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
                                 RawBitmap glyph = ReadPixels(glyphBitmap), baseline = ReadPixels(baselineBitmap);
                                 formats &= glyph.IsPremultiplied() && baseline.IsPremultiplied();
-                                bool[] allowed = OutlineBounds(glyph, size, scale);
+                                bool usesBacking = BadgeRenderer.UsesTextBacking(theme, highContrast);
+                                List<Rectangle> rows = usesBacking ? BackingRows(glyph, size, scale, baselineLayout) : null;
+                                bool[] allowed = usesBacking ? BackingBounds(rows, size) : OutlineBounds(glyph, size, scale);
+                                if (usesBacking)
+                                {
+                                    backingRows &= rows.Count == (date ? 3 : 2) && ClearBetweenRows(baseline, rows, size);
+                                    sharedHeadline &= SharedHeadlineBacking(glyphBitmap, glyph, baseline, scale, presentation, baselineLayout);
+                                }
                                 int lowCoverage = 0, highCoverage = 0, partialOutline = 0, opaqueCenters = 0;
                                 for (int offset = 0; offset < glyph.Data.Length; offset += 4)
                                 {
@@ -71,6 +84,11 @@ namespace PersonalUsageOverlay
                                         if (alpha < 128) lowCoverage++;
                                         if (alpha > 128 && alpha < 255) highCoverage++;
                                         colors &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                        if (usesBacking)
+                                        {
+                                            opaqueGlyphs &= outlinedAlpha == 255;
+                                            backedColors &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                        }
                                         if (alpha == 255)
                                         {
                                             opaqueCenters++;
@@ -81,22 +99,28 @@ namespace PersonalUsageOverlay
                                     else if (outlinedAlpha > 0)
                                     {
                                         if (outlinedAlpha < 255) partialOutline++;
-                                        outline &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                        if (!usesBacking) outline &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                        else backedColors &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
                                     }
                                     if (!allowed[offset / 4])
-                                        for (int channel = 0; channel < 4; channel++) bounds &= baseline.Data[offset + channel] == 0;
+                                        for (int channel = 0; channel < 4; channel++)
+                                        {
+                                            if (usesBacking) backingBounds &= baseline.Data[offset + channel] == 0;
+                                            else bounds &= baseline.Data[offset + channel] == 0;
+                                        }
                                     if (outlinedAlpha == 0)
                                         bounds &= baseline.Data[offset] == 0 && baseline.Data[offset + 1] == 0 && baseline.Data[offset + 2] == 0;
                                 }
                                 coverage &= lowCoverage > 0 && highCoverage > 0;
-                                outline &= partialOutline > 0;
+                                if (!usesBacking) outline &= partialOutline > 0;
                                 var heading = new Rectangle((int)Math.Round(10 * scale), (int)Math.Round(6 * scale),
                                     (int)Math.Round(214 * scale), (int)Math.Round(25 * scale));
                                 colors &= opaqueCenters > 0 && glyph.FindOpaqueText(heading, mainColor).X >= 0
                                     && baseline.FindOpaqueText(heading, mainColor).X >= 0;
 
-                                foreach (int percent in new[] { 0, 25, 50, 100 })
+                                foreach (int percent in PercentSteps)
                                 {
+                                    combinations++;
                                     BadgeLayoutSettings layout = baselineLayout.Copy();
                                     layout.BackgroundTransparency = percent;
                                     using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, layout))
@@ -130,7 +154,14 @@ namespace PersonalUsageOverlay
                                                 if (expectedAlpha == 0)
                                                     for (int channel = 0; channel < 4; channel++) backgrounds &= full.Data[offset + channel] == 0;
                                             }
+                                            if (usesBacking && glyph.Data[offset + 3] > 0)
+                                            {
+                                                opaqueGlyphs &= full.Data[offset + 3] == 255;
+                                                for (int channel = 0; channel < 4; channel++)
+                                                    backedComposite &= full.Data[offset + channel] == baseline.Data[offset + channel];
+                                            }
                                         }
+                                        if (usesBacking) backedComposite &= CompositeKeepsEveryGlyph(fullBitmap, glyph, baseline);
                                     }
                                 }
                             }
@@ -143,6 +174,180 @@ namespace PersonalUsageOverlay
             checks["badge_transparency_complete_text_layer_rgba_is_invariant_at_all_percent_values"] = invariant;
             checks["badge_transparency_full_bitmap_uses_source_over_for_every_glyph_and_outline_pixel"] = composited;
             checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
+            checks["badge_transparency_all_eleven_steps_cover_528_state_size_theme_combinations"] = combinations == 528;
+            checks["badge_light_backing_is_limited_to_actual_ink_rows_and_padding"] = backingBounds;
+            checks["badge_light_backing_keeps_row_gaps_and_date_off_space_clear"] = backingRows;
+            checks["badge_light_every_original_glyph_including_low_aa_has_opaque_backing"] = opaqueGlyphs;
+            checks["badge_light_original_aa_blends_only_with_fixed_paper_gray"] = backedColors;
+            checks["badge_light_every_glyph_rgba_is_fixed_across_all_steps_and_three_backdrops"] = backedComposite;
+            checks["badge_light_main_and_inline_countdown_share_one_backing"] = sharedHeadline;
+        }
+
+        // Inspect the ink, rather than font rectangles: chips must stay local to
+        // their text even when a long line is clipped and ellipsized.
+        private static List<Rectangle> BackingRows(RawBitmap glyph, Size size, float scale, BadgeLayoutSettings layout)
+        {
+            var rows = new List<Rectangle>();
+            foreach (BadgeElement element in layout.Elements)
+            {
+                if (!element.Visible || element.Key == "countdown") continue;
+                var band = Rectangle.Round(new RectangleF(0, element.Y * scale, size.Width,
+                    BadgeLayoutSettings.ElementHeight(element) * scale));
+                Rectangle ink = glyph.InkBounds(band);
+                if (ink.IsEmpty) continue;
+                ink.Inflate((int)Math.Ceiling(3 * scale), (int)Math.Ceiling(2 * scale));
+                rows.Add(Rectangle.Intersect(ink, new Rectangle(Point.Empty, size)));
+            }
+            return rows;
+        }
+
+        private static bool[] BackingBounds(List<Rectangle> rows, Size size)
+        {
+            var allowed = new bool[size.Width * size.Height];
+            foreach (Rectangle row in rows)
+            {
+                // GDI+ antialiasing may cover the physical pixel touching an
+                // otherwise integral path edge; it must not escape farther.
+                Rectangle antialiased = row;
+                antialiased.Inflate(1, 1);
+                antialiased.Intersect(new Rectangle(Point.Empty, size));
+                for (int y = antialiased.Top; y < antialiased.Bottom; y++)
+                    for (int x = antialiased.Left; x < antialiased.Right; x++) allowed[y * size.Width + x] = true;
+            }
+            return allowed;
+        }
+
+        private static bool ClearBetweenRows(RawBitmap text, List<Rectangle> rows, Size size)
+        {
+            for (int index = 1; index < rows.Count; index++)
+            {
+                if (rows[index - 1].Bottom + 1 >= rows[index].Top - 1) return false;
+                for (int y = rows[index - 1].Bottom + 1; y < rows[index].Top - 1; y++)
+                    for (int x = 0; x < size.Width; x++)
+                        if (text.Channel(new Point(x, y), 3) != 0) return false;
+            }
+            for (int x = 0; x < size.Width; x++)
+                if (text.Channel(new Point(x, size.Height - 1), 3) != 0) return false;
+            return rows.Count > 0;
+        }
+
+        private static bool SharedHeadlineBacking(Bitmap glyphBitmap, RawBitmap glyph, RawBitmap text, float scale,
+            UsagePresentation presentation, BadgeLayoutSettings layout)
+        {
+            if (!layout.Elements.Find(element => element.Key == "countdown").Visible) return true;
+            BadgeRenderer.HeadlinePlacement placement;
+            using (Graphics graphics = Graphics.FromImage(glyphBitmap))
+                placement = BadgeRenderer.CalculateHeadline(graphics, new Rectangle(Point.Empty, glyphBitmap.Size), scale, presentation, layout);
+            Rectangle main = glyph.InkBounds(placement.Main), countdown = glyph.InkBounds(placement.Countdown);
+            if (main.IsEmpty || countdown.IsEmpty || countdown.Left <= main.Right) return false;
+            var gap = new Point((main.Right + countdown.Left) / 2,
+                (Math.Min(main.Top, countdown.Top) + Math.Max(main.Bottom, countdown.Bottom)) / 2);
+            return glyph.Channel(gap, 3) == 0 && text.Channel(gap, 3) == 255;
+        }
+
+        private static bool CompositeKeepsEveryGlyph(Bitmap bitmap, RawBitmap glyph, RawBitmap reference)
+        {
+            foreach (Color backdrop in new[] { Color.Black, Color.White, Color.FromArgb(38, 105, 157) })
+                using (var composite = new Bitmap(bitmap.Width, bitmap.Height, PixelFormat.Format32bppPArgb))
+                {
+                    using (Graphics graphics = Graphics.FromImage(composite))
+                    {
+                        graphics.Clear(backdrop);
+                        graphics.CompositingMode = CompositingMode.SourceOver;
+                        graphics.DrawImageUnscaled(bitmap, Point.Empty);
+                    }
+                    RawBitmap actual = ReadPixels(composite);
+                    for (int offset = 0; offset < glyph.Data.Length; offset += 4)
+                        if (glyph.Data[offset + 3] > 0)
+                            for (int channel = 0; channel < 4; channel++)
+                                if (actual.Data[offset + channel] != reference.Data[offset + channel]) return false;
+                }
+            return true;
+        }
+
+        private static void CheckLightOptions(Dictionary<string, bool> checks, DateTimeOffset started,
+            TimeZoneInfo zone, bool highContrast)
+        {
+            checks["badge_light_backing_policy_keeps_dark_and_high_contrast_on_existing_path"] =
+                BadgeRenderer.UsesTextBacking(VisualTheme.Light, false)
+                && !BadgeRenderer.UsesTextBacking(VisualTheme.Dark, false)
+                && !BadgeRenderer.UsesTextBacking(VisualTheme.Light, true)
+                && !BadgeRenderer.UsesTextBacking(VisualTheme.Dark, true)
+                && !BadgeRenderer.UsesTextBacking(null, false);
+            checks["badge_light_backing_preserves_selected_paper_gray_and_text_palette"] =
+                VisualTheme.Light.Surface.ToArgb() == Color.FromArgb(0xe4, 0xe5, 0xe6).ToArgb()
+                && VisualTheme.Light.Text.ToArgb() == Color.FromArgb(0x2a, 0x2f, 0x36).ToArgb()
+                && VisualTheme.Light.Success.ToArgb() == Color.FromArgb(0x30, 0x5f, 0x4c).ToArgb()
+                && VisualTheme.Light.Muted.ToArgb() == Color.FromArgb(0x54, 0x5e, 0x69).ToArgb()
+                && VisualTheme.Light.Accent.ToArgb() == Color.FromArgb(0x52, 0x62, 0x72).ToArgb()
+                && VisualTheme.Light.DangerText.ToArgb() == Color.FromArgb(0x92, 0x26, 0x3a).ToArgb();
+
+            var failure = new UsageState
+            {
+                status = "stale", reason = "request_timeout",
+                observedAt = started.AddMinutes(-4).ToString("o", CultureInfo.InvariantCulture),
+                attemptedAt = started.ToString("o", CultureInfo.InvariantCulture)
+            };
+            foreach (int duration in new[] { QuotaPeriods.FiveHourMinutes, 60, 180, QuotaPeriods.WeeklyMinutes })
+                failure.windows.Add(new LimitWindow { limitId = "codex", window = "primary",
+                    windowDurationMins = duration, remainingPercent = 96 });
+            UsagePresentation longFailure = UsagePresentation.Create(failure, started, zone);
+            UsagePresentation[] states = { UsagePresentation.CreatePreview(started, zone), longFailure,
+                GlyphStates(started, zone)[3] };
+            bool options = true, clear = true, backing = true, clipping = true;
+            foreach (float scale in new[] { 1f, 1.5f, 2f })
+                foreach (bool date in new[] { false, true })
+                    foreach (bool countdown in new[] { false, true })
+                        foreach (UsagePresentation presentation in states)
+                        {
+                            var layout = new BadgeLayoutSettings { BackgroundTransparency = 100 };
+                            layout.Elements.Find(element => element.Key == "weekly-reset").Visible = date;
+                            layout.Elements.Find(element => element.Key == "countdown").Visible = countdown;
+                            layout.Normalize();
+                            options &= layout.Height == (date ? 82 : 58)
+                                && layout.Elements.Find(element => element.Key == "remaining").Visible
+                                && layout.Elements.Find(element => element.Key == "updated").Visible;
+                            var size = new Size((int)Math.Round(320 * scale), (int)Math.Round(layout.Height * scale));
+                            using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                            using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                            using (Bitmap fullBitmap = BadgeRenderer.CreateBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                            {
+                                RawBitmap glyph = ReadPixels(glyphBitmap), text = ReadPixels(textBitmap), full = ReadPixels(fullBitmap);
+                                options &= glyphBitmap.Size == size && textBitmap.Size == size && fullBitmap.Size == size;
+                                if (BadgeRenderer.UsesTextBacking(VisualTheme.Light, highContrast))
+                                {
+                                    List<Rectangle> rows = BackingRows(glyph, size, scale, layout);
+                                    clear &= rows.Count == (date ? 3 : 2) && ClearBetweenRows(text, rows, size);
+                                    backing &= SharedHeadlineBacking(glyphBitmap, glyph, text, scale, presentation, layout);
+                                    for (int offset = 0; offset < glyph.Data.Length; offset += 4)
+                                        if (glyph.Data[offset + 3] > 0)
+                                        {
+                                            backing &= text.Data[offset + 3] == 255 && full.Data[offset + 3] == 255
+                                                && OriginalGlyphContributionMatches(glyph.Data, text.Data, offset, VisualTheme.Light.Surface);
+                                            for (int channel = 0; channel < 4; channel++)
+                                                backing &= text.Data[offset + channel] == full.Data[offset + channel];
+                                        }
+                                    backing &= CompositeKeepsEveryGlyph(fullBitmap, glyph, text);
+                                }
+                                using (Graphics graphics = Graphics.FromImage(glyphBitmap))
+                                using (var font = new Font("Segoe UI", 14 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
+                                {
+                                    BadgeRenderer.HeadlinePlacement headline = BadgeRenderer.CalculateHeadline(graphics,
+                                        new Rectangle(Point.Empty, size), scale, presentation, layout);
+                                    if (presentation == longFailure)
+                                        clipping &= BadgeRenderer.MeasureTextWidth(graphics, presentation.MainText, font) > headline.Main.Width;
+                                    var header = new Rectangle(0, 0, size.Width, (int)Math.Round(31 * scale));
+                                    Rectangle ink = glyph.InkBounds(header);
+                                    clipping &= !ink.IsEmpty && ink.Left >= (int)Math.Round(10 * scale)
+                                        && ink.Right <= (int)Math.Round(310 * scale);
+                                }
+                            }
+                        }
+            checks["badge_light_all_four_date_countdown_options_keep_fixed_or_compact_height"] = options;
+            checks["badge_light_all_four_options_keep_clear_row_gaps_and_no_retired_date_space"] = clear;
+            checks["badge_light_long_failure_and_unknown_reset_keep_aa_opaque_and_backdrop_independent"] = backing;
+            checks["badge_light_long_failure_uses_ellipsis_allocation_without_header_overflow"] = clipping
+                && longFailure.HasQueryFailure && longFailure.ResetDateText.IndexOf("확인 불가", StringComparison.Ordinal) >= 0;
         }
 
         private static bool OriginalGlyphContributionMatches(byte[] glyph, byte[] outlined, int offset, Color surface)
@@ -199,7 +404,7 @@ namespace PersonalUsageOverlay
         {
             bool format = true, backgrounds = true, corners = true, text = true, premultiplied = true, composed = true;
             foreach (bool date in new[] { true, false })
-                foreach (int percent in new[] { 0, 25, 50, 100 })
+                foreach (int percent in PercentSteps)
                 {
                     var layout = new BadgeLayoutSettings { BackgroundTransparency = percent };
                     layout.Elements.Find(element => element.Key == "weekly-reset").Visible = date;
@@ -229,7 +434,7 @@ namespace PersonalUsageOverlay
                 }
             string prefix = "badge_transparency_" + (theme.IsDark ? "dark_" : "light_") + (int)(scale * 100) + "_";
             checks[prefix + "both_heights_use_32bit_premultiplied_bitmaps"] = format;
-            checks[prefix + "background_alpha_tracks_all_four_percent_values"] = backgrounds;
+            checks[prefix + "background_alpha_tracks_all_eleven_percent_values"] = backgrounds;
             checks[prefix + "rounded_outer_corners_are_fully_transparent"] = corners;
             checks[prefix + "heading_keeps_opaque_glyph_pixels_even_without_background"] = text;
             checks[prefix + "raw_rgb_is_premultiplied_once_and_zero_alpha_has_zero_rgb"] = premultiplied;
@@ -287,6 +492,19 @@ namespace PersonalUsageOverlay
             public RawBitmap(Size size, byte[] bytes) { this.size = size; this.bytes = bytes; }
             public byte[] Data { get { return bytes; } }
             public int Channel(Point point, int channel) { return bytes[(point.Y * size.Width + point.X) * 4 + channel]; }
+            public Rectangle InkBounds(Rectangle bounds)
+            {
+                bounds = Rectangle.Intersect(bounds, new Rectangle(Point.Empty, size));
+                int left = size.Width, right = -1, top = size.Height, bottom = -1;
+                for (int y = bounds.Top; y < bounds.Bottom; y++)
+                    for (int x = bounds.Left; x < bounds.Right; x++)
+                        if (Channel(new Point(x, y), 3) > 0)
+                        {
+                            left = Math.Min(left, x); right = Math.Max(right, x);
+                            top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+                        }
+                return right < left ? Rectangle.Empty : Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+            }
             public bool IsPremultiplied()
             {
                 for (int pixel = 0; pixel < bytes.Length; pixel += 4)
