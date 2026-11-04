@@ -16,6 +16,10 @@ namespace PersonalUsageOverlay
         public Preferences Prefs = new Preferences();
         private bool quitting;
         public string MainText = "한도 확인 중", Details = "공식 조회 연결을 준비하고 있습니다.";
+        public UsagePresentation Presentation { get; private set; }
+        public bool IsSample { get { return false; } }
+        private bool layoutSavePending;
+        private DateTime layoutSaveAt;
         private readonly string folder = AppDomain.CurrentDomain.BaseDirectory;
         private readonly JavaScriptSerializer json = new JavaScriptSerializer();
         private readonly Form dispatcher = new Form
@@ -61,12 +65,12 @@ namespace PersonalUsageOverlay
         {
             get
             {
+                if (anchorStatus == "no_space") return "배지 전체를 표시할 공간 부족 · 크기 조절 가능";
                 if (Prefs.Position == "sidebar") return "사이드바 · 창 기준 위치";
                 if (anchorStatus == "ok") return "본문 제목 아래 · 자동 위치 확인됨";
                 if (anchorStatus == "pending") return "제목 위치 확인 대기 · 앱 활성 시 읽기";
                 if (anchorStatus == "search_timeout") return "제목 위치 조회 지연 · 잠시 후 재확인";
                 if (anchorStatus == "ambiguous") return "제목 위치가 모호함 · 사이드바 선택 가능";
-                if (anchorStatus == "no_space") return "제목 아래 표시 공간 부족";
                 return "제목 위치 확인 불가 · 사이드바 선택 가능";
             }
         }
@@ -92,6 +96,9 @@ namespace PersonalUsageOverlay
                 }
 
                 Prefs.NormalizePosition();
+                Presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
+                badge.Presentation = Presentation;
+                badge.LayoutSettings = Prefs.BadgeLayout;
                 UpdateTheme();
                 runtime = LoadRuntime();
                 settings = new SettingsWindow(this);
@@ -233,6 +240,8 @@ namespace PersonalUsageOverlay
         {
             if (quitting)
                 return;
+            if (layoutSavePending && DateTime.UtcNow >= layoutSaveAt)
+                SavePreferences();
             UpdateTheme();
             var foreground = Native.GetForegroundWindow();
             var root = Native.GetAncestor(foreground, 3);
@@ -261,7 +270,7 @@ namespace PersonalUsageOverlay
                     var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor);
                     if (bounds.Width < 80 || bounds.Height < 25)
                     {
-                        if (anchorStatus == "ok") anchorStatus = "no_space";
+                        if (anchorStatus == "ok" || anchorStatus == "sidebar") anchorStatus = "no_space";
                         badge.Hide();
                     }
                     else
@@ -304,12 +313,11 @@ namespace PersonalUsageOverlay
             var presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
             MainText = presentation.MainText;
             Details = presentation.Details;
-            if (badge.MainText != presentation.MainText || badge.DetailText != presentation.DetailText || badge.LowWeeklyRemaining != presentation.LowWeeklyRemaining || badge.Tone != presentation.Tone)
+            var prior = Presentation;
+            if (prior == null || prior.MainText != presentation.MainText || prior.DetailText != presentation.DetailText || prior.ResetDateText != presentation.ResetDateText || prior.CountdownText != presentation.CountdownText || prior.Details != presentation.Details || prior.LowWeeklyRemaining != presentation.LowWeeklyRemaining || prior.Tone != presentation.Tone)
             {
-                badge.MainText = presentation.MainText;
-                badge.DetailText = presentation.DetailText;
-                badge.LowWeeklyRemaining = presentation.LowWeeklyRemaining;
-                badge.Tone = presentation.Tone;
+                Presentation = presentation;
+                badge.Presentation = presentation;
                 badge.Invalidate();
             }
 
@@ -471,7 +479,8 @@ namespace PersonalUsageOverlay
             else
             {
                 Prefs.SidebarX = left;
-                Prefs.SidebarY = vertical;
+                Prefs.SidebarBottomGap = vertical;
+                Prefs.SidebarY = vertical + 46;
             }
 
             ApplyPreferences();
@@ -482,6 +491,19 @@ namespace PersonalUsageOverlay
             Prefs.ThemeMode = mode;
             Prefs.NormalizePosition();
             ApplyPreferences();
+        }
+
+        public void SetBadgeLayout(BadgeLayoutSettings layout)
+        {
+            if (layout == null) return;
+            Prefs.BadgeLayout = layout.Copy();
+            Prefs.BadgeLayout.Normalize();
+            badge.LayoutSettings = Prefs.BadgeLayout;
+            badge.Invalidate();
+            layoutSavePending = true;
+            layoutSaveAt = DateTime.UtcNow.AddMilliseconds(400);
+            lastBounds = Rectangle.Empty;
+            Tick();
         }
 
         private void UpdateTheme()
@@ -524,6 +546,7 @@ namespace PersonalUsageOverlay
             try
             {
                 File.WriteAllText(AppIdentity.SettingsFile, json.Serialize(Prefs), new UTF8Encoding(false));
+                layoutSavePending = false;
             }
             catch
             {
@@ -593,9 +616,10 @@ namespace PersonalUsageOverlay
                     status = state.status,
                     observedAt = state.observedAt,
                     mainText = MainText,
-                    detailText = badge.DetailText,
+                    detailText = Presentation.DetailText,
+                    resetText = Presentation.ResetText,
                     reason = state.reason,
-                    lowWeeklyRemaining = badge.LowWeeklyRemaining,
+                    lowWeeklyRemaining = Presentation.LowWeeklyRemaining,
                     warningThresholdPercent = WeeklyQuotaWarning.ThresholdPercent,
                     themeMode = Prefs.ThemeMode,
                     themeSource = themeSource,
@@ -661,6 +685,7 @@ namespace PersonalUsageOverlay
             if (quitting)
                 return;
             quitting = true;
+            if (layoutSavePending) TryCleanup(SavePreferences);
             TryCleanup(delegate
             {
                 timer.Stop();

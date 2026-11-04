@@ -9,13 +9,16 @@ namespace PersonalUsageOverlay
     // Formats an observation without reading an account or touching any window.
     internal sealed class UsagePresentation
     {
-        public readonly string MainText, DetailText, Details;
+        public readonly string MainText, DetailText, Details, ResetText, ResetDateText, CountdownText;
         public readonly double? LowWeeklyRemaining;
         public readonly UsageTone Tone;
-        private UsagePresentation(string mainText, string detailText, string details, double? lowWeeklyRemaining, UsageTone tone)
+        private UsagePresentation(string mainText, string detailText, ResetPresentation reset, string details, double? lowWeeklyRemaining, UsageTone tone)
         {
             MainText = mainText;
             DetailText = detailText;
+            ResetText = reset.Combined;
+            ResetDateText = reset.Date;
+            CountdownText = reset.Countdown;
             Details = details;
             LowWeeklyRemaining = lowWeeklyRemaining;
             Tone = tone;
@@ -23,12 +26,20 @@ namespace PersonalUsageOverlay
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now)
         {
-            var windows = (state.windows ?? new List<LimitWindow>()).FindAll(w => w.limitId == "codex");
+            return Create(state, now, TimeZoneInfo.Local);
+        }
+
+        public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone)
+        {
+            state = state ?? new UsageState { status = "unavailable" };
+            zone = zone ?? TimeZoneInfo.Local;
+            var windows = (state.windows ?? new List<LimitWindow>()).FindAll(w => w != null && w.limitId == "codex");
             DateTimeOffset observed;
-            bool aged = DateTimeOffset.TryParse(state.observedAt, out observed) && now - observed >= WeeklyQuotaWarning.FreshFor;
+            bool fresh = TryTime(state.observedAt, out observed) && observed <= now && now - observed < WeeklyQuotaWarning.FreshFor;
             string status = state.status ?? "unavailable";
-            if (status == "ok" && aged)
+            if (status == "ok" && !fresh)
                 status = "stale";
+            fresh = status == "ok" && fresh;
             double? lowWeekly = WeeklyQuotaWarning.Remaining(state, now);
             var parts = new List<string>();
             var resets = new List<string>();
@@ -36,22 +47,107 @@ namespace PersonalUsageOverlay
             {
                 string label = WindowLabel(window);
                 parts.Add(label + " " + window.remainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%");
-                if (window.resetsAt.HasValue && window.resetsAt.Value >= -62135596800 && window.resetsAt.Value <= 253402300799)
+                DateTimeOffset reset;
+                // The weekly schedule is shown once, with its freshness and D-day.
+                if (window.windowDurationMins != QuotaPeriods.WeeklyMinutes && TryReset(window.resetsAt, zone, out reset))
                 {
-                    var reset = DateTimeOffset.FromUnixTimeSeconds((long)window.resetsAt.Value).ToLocalTime();
-                    resets.Add(label + " 초기화: " + reset.ToString("MM/dd HH:mm:ss zzz"));
+                    resets.Add((fresh ? "" : "이전 ") + label + " 초기화: " + reset.ToString("MM/dd HH:mm:ss zzz", CultureInfo.InvariantCulture));
                 }
             }
 
-            string mainText = parts.Count > 0 ? (status == "stale" ? "이전 값 · " : "") + string.Join(" · ", parts.ToArray()) + " 남음" : status == "loading" ? "한도 확인 중" : "한도 확인 불가";
-            string detailText = StatusText(state, status, parts.Count > 0);
+            string mainText = parts.Count > 0 ? (fresh ? "" : "이전 값 · ") + string.Join(" · ", parts.ToArray()) + " 남음" : status == "loading" ? "한도 확인 중" : "한도 확인 불가";
+            string detailText = StatusText(state, status, parts.Count > 0, zone);
             if (lowWeekly.HasValue)
-                detailText = (lowWeekly.Value == 0 ? "주간 한도 소진" : "주간 한도 부족") + " · 갱신 " + TimeText(state.observedAt);
-            string details = "연결된 Codex 계정의 한도\n" + detailText + "\n" + string.Join("\n", resets.ToArray());
+                detailText = (lowWeekly.Value == 0 ? "주간 한도 소진" : "주간 한도 부족") + " · 갱신 " + TimeText(state.observedAt, zone);
+            ResetPresentation resetText = WeeklyResetText(windows, now, zone, fresh);
+            string details = "연결된 Codex 계정의 한도\n" + detailText + "\n" + resetText.Combined;
+            if (resets.Count > 0)
+                details += "\n" + string.Join("\n", resets.ToArray());
             if (state.reason != null)
                 details += "\n상태: " + FriendlyReason(state.reason);
             var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
-            return new UsagePresentation(mainText, detailText, details, lowWeekly, tone);
+            return new UsagePresentation(mainText, detailText, resetText, details, lowWeekly, tone);
+        }
+
+        private sealed class ResetPresentation
+        {
+            public readonly string Combined, Date, Countdown;
+            public ResetPresentation(string date, string countdown, string combinedCountdown)
+            {
+                Date = date;
+                Countdown = countdown;
+                Combined = date + (combinedCountdown == null ? "" : " · " + combinedCountdown);
+            }
+        }
+
+        private static ResetPresentation UnknownReset(string prefix, bool previous)
+        {
+            return new ResetPresentation(prefix + " 확인 불가", previous ? "이전 일정" : "확인 불가", null);
+        }
+
+        private static ResetPresentation WeeklyResetText(List<LimitWindow> windows, DateTimeOffset now, TimeZoneInfo zone, bool fresh)
+        {
+            bool previous = !fresh && windows.Count > 0;
+            string prefix = previous ? "이전 주간 초기화" : "주간 초기화";
+            double? seconds = null;
+            DateTimeOffset reset = default(DateTimeOffset);
+            foreach (LimitWindow window in windows)
+            {
+                if (window.windowDurationMins != QuotaPeriods.WeeklyMinutes)
+                    continue;
+                DateTimeOffset candidate;
+                // Missing/invalid entries cannot be reconciled with another weekly entry.
+                if (!TryReset(window.resetsAt, zone, out candidate)
+                    || (seconds.HasValue && seconds.Value != window.resetsAt.Value))
+                    return UnknownReset(prefix, previous);
+                seconds = window.resetsAt;
+                reset = candidate;
+            }
+            DateTimeOffset localNow;
+            if (!seconds.HasValue || !TryLocalTime(now, zone, out localNow))
+                return UnknownReset(prefix, previous);
+            if (reset <= now)
+                return new ResetPresentation(prefix + " 시각 지남", "갱신 필요", "갱신 필요");
+            int days = (reset.Date - localNow.Date).Days;
+            if (days < 0)
+                return UnknownReset(prefix, previous);
+            string date = reset.ToString(reset.Year == localNow.Year ? "MM/dd" : "yyyy/MM/dd", CultureInfo.InvariantCulture);
+            string weekday = new[] { "일", "월", "화", "수", "목", "금", "토" }[(int)reset.DayOfWeek];
+            string countdown = days == 0 ? "D-DAY" : "D-" + days.ToString(CultureInfo.InvariantCulture);
+            return new ResetPresentation(prefix + " " + date + "(" + weekday + ") " + reset.ToString("HH:mm", CultureInfo.InvariantCulture),
+                previous ? "이전 " + countdown : countdown, countdown);
+        }
+
+        private static bool TryReset(double? seconds, TimeZoneInfo zone, out DateTimeOffset result)
+        {
+            result = default(DateTimeOffset);
+            if (!seconds.HasValue || Double.IsNaN(seconds.Value) || Double.IsInfinity(seconds.Value)
+                || seconds.Value < -62135596800d || seconds.Value > 253402300799d)
+                return false;
+            try
+            {
+                double whole = Math.Floor(seconds.Value);
+                DateTimeOffset utc = DateTimeOffset.FromUnixTimeSeconds((long)whole)
+                    .AddTicks((long)Math.Round((seconds.Value - whole) * TimeSpan.TicksPerSecond));
+                return TryLocalTime(utc, zone, out result);
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static bool TryLocalTime(DateTimeOffset value, TimeZoneInfo zone, out DateTimeOffset result)
+        {
+            result = default(DateTimeOffset);
+            try
+            {
+                // ConvertTime may clamp an out-of-range local date. Reject that case
+                // rather than displaying a date different from the actual instant.
+                long ticks = value.UtcDateTime.Ticks + zone.GetUtcOffset(value).Ticks;
+                if (ticks < DateTime.MinValue.Ticks || ticks > DateTime.MaxValue.Ticks)
+                    return false;
+                result = TimeZoneInfo.ConvertTime(value, zone);
+                return result.UtcDateTime.Ticks == value.UtcDateTime.Ticks;
+            }
+            catch (Exception) { return false; }
         }
 
         private static string WindowLabel(LimitWindow window)
@@ -63,21 +159,27 @@ namespace PersonalUsageOverlay
             return window.windowDurationMins.HasValue ? window.windowDurationMins.Value.ToString("0", CultureInfo.InvariantCulture) + "분" : window.window;
         }
 
-        private static string StatusText(UsageState state, string status, bool hasValues)
+        private static string StatusText(UsageState state, string status, bool hasValues, TimeZoneInfo zone)
         {
             if (status == "loading")
-                return state.observedAt == null ? "공식 조회 · 연결 중" : "갱신 중 · 마지막 " + TimeText(state.observedAt);
+                return state.observedAt == null ? "공식 조회 · 연결 중" : "갱신 중 · 마지막 " + TimeText(state.observedAt, zone);
             if (status == "ok" && hasValues)
-                return "갱신 " + TimeText(state.observedAt) + " · Codex 계정";
+                return "갱신 " + TimeText(state.observedAt, zone) + " · Codex 계정";
             if (hasValues)
-                return (state.reason != null && state.reason != "last_update_expired" ? "갱신 실패" : "오래된 값") + " · 마지막 " + TimeText(state.observedAt);
-            return "조회 실패 · 설정 창에서 다시 갱신";
+                return (state.reason != null && state.reason != "last_update_expired" ? "갱신 실패" : "오래된 값") + " · 마지막 " + TimeText(state.observedAt, zone);
+            return state.attemptedAt == null ? "조회 실패 · 설정 창에서 다시 갱신" : "조회 실패 · 시도 " + TimeText(state.attemptedAt, zone);
         }
 
-        private static string TimeText(string iso)
+        private static string TimeText(string iso, TimeZoneInfo zone)
         {
-            DateTimeOffset value;
-            return DateTimeOffset.TryParse(iso, out value) ? value.ToLocalTime().ToString("HH:mm:ss") : "—";
+            DateTimeOffset value, local;
+            return TryTime(iso, out value) && TryLocalTime(value, zone, out local)
+                ? local.ToString("HH:mm:ss", CultureInfo.InvariantCulture) : "—";
+        }
+
+        private static bool TryTime(string iso, out DateTimeOffset value)
+        {
+            return DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
         }
 
         private static string FriendlyReason(string reason)

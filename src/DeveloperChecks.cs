@@ -20,6 +20,10 @@ namespace PersonalUsageOverlay
             RuntimeResolverChecks.Run(checks);
             ThemeReaderChecks.Run(checks);
             ThemeChecks.Run(checks);
+            BadgeLayoutChecks.Run(checks);
+            UsagePresentationChecks.Run(checks);
+            BadgeEditorChecks.Run(checks);
+            SettingsBindingChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {
@@ -128,31 +132,34 @@ namespace PersonalUsageOverlay
             var preferences = new Preferences();
             checks["below_title_is_default"] = preferences.Position == Preferences.BelowTitle;
             var sidebar = new Preferences { Position = "sidebar" };
-            checks["sidebar_relative_to_client"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,918,224,46);
-            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,877,336,69);
-            checks["tiny_sidebar_stays_inside_window"] = OverlayLayout.CalculateBounds(new Rectangle(0,0,100,30),1,sidebar) == new Rectangle(0,0,100,30);
+            checks["sidebar_preserves_legacy_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,882,320,82);
+            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,823,480,123);
+            checks["tiny_sidebar_hides_full_badge_instead_of_clipping"] = OverlayLayout.CalculateBounds(new Rectangle(0,0,100,30),1,sidebar).IsEmpty;
             var client = new Rectangle(59,104,2944,1877);
             var anchor = new TitleAnchorObservation { Status="ok",TitleBounds=new Rectangle(585,195,199,28),HeaderBounds=new Rectangle(507,170,2491,78) };
             checks["unavailable_title_never_falls_back_over_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences).IsEmpty;
-            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(585,257,336,69);
-            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(585,254,224,46);
-            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(585,260,448,92);
+            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(585,257,480,123);
+            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(585,254,320,82);
+            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(585,260,640,164);
             preferences.TitleOffsetX=12; preferences.TitleGap=10;
-            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(603,263,336,69);
+            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(603,263,480,123);
             preferences.ResetCurrentPosition();
             anchor.TitleBounds=new Rectangle(2900,195,80,28);
-            checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2662,257,336,69);
+            checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2518,257,480,123);
             anchor.TitleBounds=new Rectangle(585,195,199,28); preferences.TitleOffsetX=-4000;
             checks["negative_offset_cannot_enter_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 507;
             preferences.ResetCurrentPosition();
             anchor.HeaderBounds=new Rectangle(107,170,2891,78); anchor.TitleBounds=new Rectangle(185,195,199,28);
-            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(185,257,336,69);
+            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(185,257,480,123);
             anchor.HeaderBounds=new Rectangle(-2112,-134,1547,78); anchor.TitleBounds=new Rectangle(-2034,-109,199,28);
-            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2034,-47,336,69);
+            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2034,-47,480,123);
             anchor.HeaderBounds=new Rectangle(507,170,70,78); anchor.TitleBounds=new Rectangle(517,195,40,28);
             checks["insufficient_content_width_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.HeaderBounds=new Rectangle(507,170,2491,78); anchor.TitleBounds=new Rectangle(585,195,199,28);
             checks["insufficient_space_below_header_hides_badge"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,150),1.5f,preferences,anchor).IsEmpty;
+            checks["partial_height_does_not_cut_reset_or_countdown"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,250),1.5f,preferences,anchor).IsEmpty;
+            var large = new Preferences { BadgeLayout = new BadgeLayoutSettings { Width=600,Height=300 } };
+            checks["custom_canvas_dimensions_drive_actual_overlay_bounds"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(585,257,900,450);
             anchor.Status="ambiguous";
             checks["ambiguous_title_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.Status="ok"; anchor.TitleBounds=new Rectangle(80,195,199,28);
@@ -166,82 +173,45 @@ namespace PersonalUsageOverlay
 
         public static void RenderSamples(string directory)
         {
-            // Developer-only visual verification: no tray, worker, account read or settings writes.
             Directory.CreateDirectory(directory);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            var samples = new[]
-            {
-                new
-                {
-                    Name = "normal",
-                    Main = "주간 75% 남음",
-                    Detail = "갱신 12:34:56 · Codex 계정",
-                    Low = (double?)null,
-                    Tone = UsageTone.Normal
-                },
-                new
-                {
-                    Name = "weekly-low",
-                    Main = "주간 14% 남음",
-                    Detail = "주간 한도 부족 · 갱신 12:34:56",
-                    Low = (double?)14,
-                    Tone = UsageTone.Low
-                },
-                new
-                {
-                    Name = "weekly-exhausted",
-                    Main = "주간 0% 남음",
-                    Detail = "주간 한도 소진 · 갱신 12:34:56",
-                    Low = (double?)0,
-                    Tone = UsageTone.Low
-                },
-                new
-                {
-                    Name = "stale",
-                    Main = "이전 값 · 주간 14% 남음",
-                    Detail = "갱신 실패 · 마지막 12:34:56",
-                    Low = (double?)null,
-                    Tone = UsageTone.Attention
-                }
+            var samples = new[] {
+                new { Name="normal", Value=SettingsPreviewHost.CreateSample(96,"ok") },
+                new { Name="weekly-low", Value=SettingsPreviewHost.CreateSample(14,"ok") },
+                new { Name="weekly-exhausted", Value=SettingsPreviewHost.CreateSample(0,"ok") },
+                new { Name="stale", Value=SettingsPreviewHost.CreateSample(14,"stale") },
+                new { Name="loading", Value=SettingsPreviewHost.CreateSample(0,"loading") },
+                new { Name="reset-unknown", Value=SettingsPreviewHost.CreateSample(96,"ok",false) }
             };
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
-            foreach (var sample in samples)
-                foreach (var scale in new[] { 1f, 1.5f, 2f })
-                    using (var badge = new Badge
+                foreach (var sample in samples)
+                    foreach (float scale in new[] {1f,1.5f,2f})
                     {
-                        ClientSize = new Size((int)(OverlayLayout.BadgeWidth * scale), (int)(OverlayLayout.BadgeHeight * scale)),
-                        ScaleFactor = scale,
-                        MainText = sample.Main,
-                        DetailText = sample.Detail,
-                        LowWeeklyRemaining = sample.Low,
-                        Tone = sample.Tone,
-                        Theme = theme
-                    })
-                    using (var bitmap = new Bitmap(badge.Width, badge.Height))
-                    {
-                        badge.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
-                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + sample.Name + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                        var layout = new BadgeLayoutSettings();
+                        using (var badge = new Badge { ClientSize=new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),ScaleFactor=scale,Theme=theme,LayoutSettings=layout,Presentation=sample.Value })
+                        using (var bitmap = new Bitmap(badge.Width,badge.Height))
+                        {
+                            badge.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));
+                            bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+sample.Name+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                        }
                     }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
-                foreach (string position in new[] { "sidebar", Preferences.BelowTitle })
-                foreach (float scale in new[] { 1f, 1.5f, 2f })
-                    using (var window = new SettingsWindow(new SettingsPreviewHost(theme, position), scale))
-                    using (var bitmap = new Bitmap(window.ClientSize.Width, window.ClientSize.Height))
-                    {
-                        // A transparent, off-screen fixture creates native child controls.
-                        // It never activates or starts the real app, account queries or settings writes.
-                        window.FormBorderStyle = FormBorderStyle.None;
-                        window.ShowInTaskbar = false;
-                        window.StartPosition = FormStartPosition.Manual;
-                        window.Location = new Point(-32000, -32000);
-                        window.Opacity = 0;
-                        window.Show();
-                        bitmap.SetResolution(96 * scale, 96 * scale);
-                        window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.ClientSize));
-                        window.Hide();
-                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + "settings-" + position + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
-                    }
+                foreach (string position in new[] {"sidebar",Preferences.BelowTitle})
+                    foreach (float scale in new[] {1f,1.5f,2f})
+                        using (var window = new SettingsWindow(new SettingsPreviewHost(theme,position),scale))
+                        using (var bitmap = new Bitmap(window.ClientSize.Width,window.ClientSize.Height))
+                        {
+                            window.FormBorderStyle=FormBorderStyle.None;window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
+                            bitmap.SetResolution(96*scale,96*scale);
+                            for(int page=0;page<3;page++)
+                            {
+                                window.SelectPreviewPage(page);window.PerformLayout();Application.DoEvents();
+                                window.DrawToBitmap(bitmap,new Rectangle(Point.Empty,window.ClientSize));
+                                bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"settings-"+position+"-page"+page+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                            }
+                            window.Hide();
+                        }
         }
     }
 }

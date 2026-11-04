@@ -11,6 +11,8 @@ namespace PersonalUsageOverlay
         public int SidebarX = 64, SidebarY = 82;
         public int TitleOffsetX = DefaultTitleOffsetX, TitleGap = DefaultTitleGap;
         public string ThemeMode = "codex";
+        public BadgeLayoutSettings BadgeLayout = new BadgeLayoutSettings();
+        public int? SidebarBottomGap;
 
         internal void NormalizePosition()
         {
@@ -20,6 +22,12 @@ namespace PersonalUsageOverlay
             TitleGap = Math.Max(0, Math.Min(3000, TitleGap));
             if (ThemeMode != "light" && ThemeMode != "dark" && ThemeMode != "system")
                 ThemeMode = "codex";
+            if (!SidebarBottomGap.HasValue)
+                SidebarBottomGap = (int)Math.Max(0L, Math.Min(3000L, (long)SidebarY - 46));
+            else
+                SidebarBottomGap = Math.Max(0, Math.Min(3000, SidebarBottomGap.Value));
+            if (BadgeLayout == null) BadgeLayout = new BadgeLayoutSettings();
+            BadgeLayout.Normalize();
         }
 
         internal void ResetCurrentPosition()
@@ -28,6 +36,7 @@ namespace PersonalUsageOverlay
             {
                 SidebarX = 64;
                 SidebarY = 82;
+                SidebarBottomGap = 36;
             }
             else
             {
