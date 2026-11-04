@@ -5,10 +5,12 @@ namespace PersonalUsageOverlay
 {
     internal static class PositionAdjustmentPolicy
     {
-        internal static bool CanShow(bool codexForeground, bool settingsForeground, bool positionPage,
+        // Both settings pages may keep the actual target badge visible. The
+        // foreground and target guards are independent of the selected page.
+        internal static bool CanShow(bool codexForeground, bool settingsForeground,
             bool settingsNormal, bool targetAvailable)
         {
-            return codexForeground || (settingsForeground && positionPage && settingsNormal && targetAvailable);
+            return codexForeground || (settingsForeground && settingsNormal && targetAvailable);
         }
     }
 

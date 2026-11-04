@@ -50,11 +50,7 @@ namespace PersonalUsageOverlay
                 checks["settings_binding_only_overlay_and_position_theme_pages_remain"] = Field<ThemedButton[]>(window, "pageButtons").Length == 2
                     && Field<Panel[]>(window, "pages").Length == 2
                     && typeof(SettingsWindow).GetField("indicatorChoice", BindingFlags.Instance | BindingFlags.NonPublic) == null;
-                checks["settings_position_adjustment_is_enabled_only_on_position_page"] = !window.IsPositionPageSelected;
-                window.SelectPreviewPage(1);
-                checks["settings_position_page_enables_adjustment_even_without_coordinate_change"] = window.IsPositionPageSelected;
-                window.SelectPreviewPage(0);
-                checks["settings_leaving_position_page_ends_adjustment"] = !window.IsPositionPageSelected;
+                CheckCommonSettingsDisplay(checks, window, host);
 
                 reset.Checked = false;
                 checks["settings_binding_reset_date_off_keeps_inline_countdown_at_compact_height"] = OptionsMatch(preview, host, false, true)
@@ -168,6 +164,32 @@ namespace PersonalUsageOverlay
                     && transparencyLabel.Text.Contains("23") && OptionsMatch(preview, host, false, false)
                     && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
             }
+        }
+
+        private static void CheckCommonSettingsDisplay(Dictionary<string, bool> checks, SettingsWindow window, SettingsPreviewHost host)
+        {
+            ThemedButton[] buttons = Field<ThemedButton[]>(window, "pageButtons");
+            Panel[] pages = Field<Panel[]>(window, "pages");
+            BadgePreview preview = Field<BadgePreview>(window, "preview");
+            Label label = Field<Label>(window, "previewStatus");
+            UsagePresentation example = preview.Presentation;
+            string text = PreviewText(example), caption = label.Text;
+            BadgeLayoutSettings savedLayout = host.Prefs.BadgeLayout;
+            var json = new JavaScriptSerializer();
+            string preferences = json.Serialize(host.Prefs);
+
+            window.SelectPreviewPage(0);
+            bool overlay = buttons[0].Selected && !buttons[1].Selected && LocallyVisible(pages[0]) && !LocallyVisible(pages[1])
+                && PositionAdjustmentPolicy.CanShow(false, true, true, true);
+            window.SelectPreviewPage(1);
+            bool position = !buttons[0].Selected && buttons[1].Selected && !LocallyVisible(pages[0]) && LocallyVisible(pages[1])
+                && PositionAdjustmentPolicy.CanShow(false, true, true, true);
+            window.SelectPreviewPage(0);
+            checks["settings_both_tabs_use_common_foreground_target_display_policy"] = overlay && position
+                && buttons[0].Selected && !buttons[1].Selected;
+            checks["settings_tab_navigation_keeps_saved_options_and_cached_example_without_showing"] = !window.Visible
+                && Object.ReferenceEquals(savedLayout, host.Prefs.BadgeLayout) && preferences == json.Serialize(host.Prefs)
+                && PreviewUnchanged(preview, example, text, label, caption);
         }
 
         private static void CheckJsonRoundTrip(Dictionary<string, bool> checks)

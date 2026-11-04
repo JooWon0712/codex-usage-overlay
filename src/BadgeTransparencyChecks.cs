@@ -39,8 +39,8 @@ namespace PersonalUsageOverlay
         private static void CheckEveryGlyphPixel(Dictionary<string, bool> checks, DateTimeOffset started,
             TimeZoneInfo zone, bool highContrast)
         {
-            bool formats = true, glyphs = true, opaque = true, masks = true, colors = true,
-                composited = true, matte = true, backgrounds = true;
+            bool formats = true, coverage = true, colors = true, outline = true, bounds = true,
+                invariant = true, composited = true, backgrounds = true;
             UsagePresentation[] states = GlyphStates(started, zone);
             foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
@@ -52,31 +52,48 @@ namespace PersonalUsageOverlay
                             baselineLayout.Normalize();
                             var size = new Size((int)Math.Round(baselineLayout.Width * scale), (int)Math.Round(baselineLayout.Height * scale));
                             Color mainColor = presentation.LowWeeklyRemaining.HasValue ? theme.DangerText : theme.Text;
-                            Color stateColor = presentation.Tone == UsageTone.Low ? theme.Danger
-                                : presentation.Tone == UsageTone.Normal ? theme.Success : theme.Attention;
-                            Color[] palette = { mainColor, stateColor, theme.Muted,
-                                presentation.LowWeeklyRemaining.HasValue ? theme.DangerText : theme.Accent };
+                            using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, theme, presentation, baselineLayout))
                             using (Bitmap baselineBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, baselineLayout))
                             {
-                                formats &= baselineBitmap.Size == size && baselineBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
-                                RawBitmap baseline = ReadPixels(baselineBitmap);
-                                int baselineCount = 0, antialiased = 0;
-                                for (int offset = 0; offset < baseline.Data.Length; offset += 4)
+                                formats &= glyphBitmap.Size == size && baselineBitmap.Size == size
+                                    && glyphBitmap.PixelFormat == PixelFormat.Format32bppPArgb
+                                    && baselineBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
+                                RawBitmap glyph = ReadPixels(glyphBitmap), baseline = ReadPixels(baselineBitmap);
+                                formats &= glyph.IsPremultiplied() && baseline.IsPremultiplied();
+                                bool[] allowed = OutlineBounds(glyph, size, scale);
+                                int lowCoverage = 0, highCoverage = 0, partialOutline = 0, opaqueCenters = 0;
+                                for (int offset = 0; offset < glyph.Data.Length; offset += 4)
                                 {
-                                    if (baseline.Data[offset + 3] == 0) continue;
-                                    baselineCount++;
-                                    bool exactForeground = false;
-                                    foreach (Color foreground in palette)
-                                        exactForeground |= MatchesRgb(baseline.Data, offset, foreground);
-                                    if (!exactForeground && !MatchesRgb(baseline.Data, offset, theme.Surface)) antialiased++;
-                                    matte &= !MatchesRgb(baseline.Data, offset, theme.Surface)
-                                        && MatchesMatte(baseline.Data, offset, theme.Surface, palette);
+                                    int alpha = glyph.Data[offset + 3], outlinedAlpha = baseline.Data[offset + 3];
+                                    if (alpha > 0)
+                                    {
+                                        coverage &= outlinedAlpha >= alpha;
+                                        if (alpha < 128) lowCoverage++;
+                                        if (alpha > 128 && alpha < 255) highCoverage++;
+                                        colors &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                        if (alpha == 255)
+                                        {
+                                            opaqueCenters++;
+                                            for (int channel = 0; channel < 4; channel++)
+                                                colors &= baseline.Data[offset + channel] == glyph.Data[offset + channel];
+                                        }
+                                    }
+                                    else if (outlinedAlpha > 0)
+                                    {
+                                        if (outlinedAlpha < 255) partialOutline++;
+                                        outline &= OriginalGlyphContributionMatches(glyph.Data, baseline.Data, offset, theme.Surface);
+                                    }
+                                    if (!allowed[offset / 4])
+                                        for (int channel = 0; channel < 4; channel++) bounds &= baseline.Data[offset + channel] == 0;
+                                    if (outlinedAlpha == 0)
+                                        bounds &= baseline.Data[offset] == 0 && baseline.Data[offset + 1] == 0 && baseline.Data[offset + 2] == 0;
                                 }
+                                coverage &= lowCoverage > 0 && highCoverage > 0;
+                                outline &= partialOutline > 0;
                                 var heading = new Rectangle((int)Math.Round(10 * scale), (int)Math.Round(6 * scale),
                                     (int)Math.Round(214 * scale), (int)Math.Round(25 * scale));
-                                glyphs &= baselineCount > 0 && baselineCount < size.Width * size.Height
+                                colors &= opaqueCenters > 0 && glyph.FindOpaqueText(heading, mainColor).X >= 0
                                     && baseline.FindOpaqueText(heading, mainColor).X >= 0;
-                                matte &= antialiased > 0;
 
                                 foreach (int percent in new[] { 0, 25, 50, 100 })
                                 {
@@ -89,58 +106,82 @@ namespace PersonalUsageOverlay
                                             && textBitmap.PixelFormat == PixelFormat.Format32bppPArgb
                                             && fullBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
                                         RawBitmap text = ReadPixels(textBitmap), full = ReadPixels(fullBitmap);
+                                        formats &= text.IsPremultiplied() && full.IsPremultiplied();
                                         if (text.Data.Length != baseline.Data.Length || full.Data.Length != baseline.Data.Length)
-                                        {
-                                            masks = colors = composited = backgrounds = false;
-                                            continue;
-                                        }
-                                        int count = 0;
+                                        { invariant = composited = backgrounds = false; continue; }
+                                        var background = new Point(size.Width / 2, size.Height - (int)Math.Ceiling(4 * scale));
+                                        byte[] sample = { (byte)full.Channel(background, 0), (byte)full.Channel(background, 1),
+                                            (byte)full.Channel(background, 2), (byte)full.Channel(background, 3) };
                                         int expectedAlpha = BadgeRenderer.BackgroundAlpha(percent, highContrast);
+                                        backgrounds &= text.Channel(background, 3) == 0 && Math.Abs(sample[3] - expectedAlpha) <= 1
+                                            && BackgroundChannelsMatch(full, background, theme.Surface, expectedAlpha);
                                         int inset = (int)Math.Ceiling(12 * scale);
                                         for (int offset = 0; offset < text.Data.Length; offset += 4)
                                         {
-                                            bool baselineGlyph = baseline.Data[offset + 3] > 0;
-                                            bool currentGlyph = text.Data[offset + 3] > 0;
-                                            masks &= baselineGlyph == currentGlyph;
-                                            if (baselineGlyph || currentGlyph)
-                                                for (int channel = 0; channel < 4; channel++)
-                                                    colors &= text.Data[offset + channel] == baseline.Data[offset + channel];
-                                            if (currentGlyph)
-                                            {
-                                                count++;
-                                                opaque &= text.Data[offset + 3] == 255;
-                                                for (int channel = 0; channel < 4; channel++)
-                                                {
-                                                    composited &= full.Data[offset + channel] == text.Data[offset + channel];
-                                                }
-                                            }
+                                            for (int channel = 0; channel < 4; channel++)
+                                                invariant &= text.Data[offset + channel] == baseline.Data[offset + channel];
+                                            if (text.Data[offset + 3] > 0)
+                                                composited &= SourceOverMatches(text.Data, full.Data, offset, sample);
                                             else
                                             {
-                                                // The text-only layer must not retain its opaque matte.
-                                                opaque &= text.Data[offset] == 0 && text.Data[offset + 1] == 0 && text.Data[offset + 2] == 0;
                                                 int pixel = offset / 4, x = pixel % size.Width, y = pixel / size.Width;
                                                 if (x >= inset && x < size.Width - inset && y >= inset && y < size.Height - inset)
                                                     backgrounds &= Math.Abs(full.Data[offset + 3] - expectedAlpha) <= 1;
                                                 if (expectedAlpha == 0)
-                                                    backgrounds &= full.Data[offset] == 0 && full.Data[offset + 1] == 0
-                                                        && full.Data[offset + 2] == 0 && full.Data[offset + 3] == 0;
+                                                    for (int channel = 0; channel < 4; channel++) backgrounds &= full.Data[offset + channel] == 0;
                                             }
                                         }
-                                        masks &= count == baselineCount;
                                     }
                                 }
                             }
                         }
-            checks["badge_transparency_all_states_text_layers_have_expected_size_and_pargb_format"] = formats;
-            checks["badge_transparency_all_states_and_sizes_keep_visible_main_glyphs_and_state_colors"] = glyphs;
-            checks["badge_transparency_every_glyph_pixel_is_opaque_and_text_layer_has_no_matte_background"] = opaque;
-            checks["badge_transparency_every_glyph_mask_and_pixel_count_is_invariant_at_all_percent_values"] = masks;
-            checks["badge_transparency_every_glyph_rgba_including_aa_is_invariant_at_all_percent_values"] = colors;
-            checks["badge_transparency_full_bitmap_matches_every_text_layer_glyph_pixel_exactly"] = composited;
-            checks["badge_transparency_aa_pixels_use_opaque_surface_matte_and_are_not_discarded"] = matte;
+            checks["badge_transparency_all_states_glyph_text_and_full_layers_use_premultiplied_format"] = formats;
+            checks["badge_transparency_original_low_and_high_aa_coverage_is_never_deleted"] = coverage;
+            checks["badge_transparency_original_glyph_color_contribution_and_opaque_centers_are_preserved"] = colors;
+            checks["badge_transparency_fixed_surface_outline_has_soft_partial_alpha"] = outline;
+            checks["badge_transparency_outline_stays_within_one_dip_radius_plus_aa_without_extra_background"] = bounds;
+            checks["badge_transparency_complete_text_layer_rgba_is_invariant_at_all_percent_values"] = invariant;
+            checks["badge_transparency_full_bitmap_uses_source_over_for_every_glyph_and_outline_pixel"] = composited;
             checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
         }
 
+        private static bool OriginalGlyphContributionMatches(byte[] glyph, byte[] outlined, int offset, Color surface)
+        {
+            int addedAlpha = outlined[offset + 3] - glyph[offset + 3];
+            if (addedAlpha < 0) return false;
+            return Math.Abs(outlined[offset] - glyph[offset] - (surface.B * addedAlpha + 127) / 255) <= 1
+                && Math.Abs(outlined[offset + 1] - glyph[offset + 1] - (surface.G * addedAlpha + 127) / 255) <= 1
+                && Math.Abs(outlined[offset + 2] - glyph[offset + 2] - (surface.R * addedAlpha + 127) / 255) <= 1;
+        }
+
+        private static bool SourceOverMatches(byte[] source, byte[] actual, int offset, byte[] background)
+        {
+            int inverse = 255 - source[offset + 3];
+            for (int channel = 0; channel < 4; channel++)
+                if (Math.Abs(actual[offset + channel] - source[offset + channel] - (background[channel] * inverse + 127) / 255) > 2)
+                    return false;
+            return true;
+        }
+
+        private static bool[] OutlineBounds(RawBitmap glyph, Size size, float scale)
+        {
+            var allowed = new bool[size.Width * size.Height];
+            double reach = Math.Max(1d, scale) + 1d;
+            int radius = (int)Math.Ceiling(reach);
+            for (int y = 0; y < size.Height; y++)
+                for (int x = 0; x < size.Width; x++)
+                {
+                    if (glyph.Data[(y * size.Width + x) * 4 + 3] == 0) continue;
+                    for (int dy = -radius; dy <= radius; dy++)
+                        for (int dx = -radius; dx <= radius; dx++)
+                            if (dx * dx + dy * dy <= reach * reach)
+                            {
+                                int tx = x + dx, ty = y + dy;
+                                if (tx >= 0 && tx < size.Width && ty >= 0 && ty < size.Height) allowed[ty * size.Width + tx] = true;
+                            }
+                }
+            return allowed;
+        }
         private static UsagePresentation[] GlyphStates(DateTimeOffset started, TimeZoneInfo zone)
         {
             var low = new UsageState { status = "ok", observedAt = started.ToString("o", CultureInfo.InvariantCulture) };
@@ -151,33 +192,6 @@ namespace PersonalUsageOverlay
             var unavailable = new UsageState { status = "unavailable", reason = "usage_unavailable", attemptedAt = started.ToString("o", CultureInfo.InvariantCulture) };
             return new[] { UsagePresentation.CreatePreview(started, zone), UsagePresentation.Create(low, started, zone),
                 UsagePresentation.Create(stale, started, zone), UsagePresentation.Create(unavailable, started, zone) };
-        }
-
-        private static bool MatchesRgb(byte[] bytes, int offset, Color color)
-        {
-            return bytes[offset] == color.B && bytes[offset + 1] == color.G && bytes[offset + 2] == color.R;
-        }
-
-        private static bool MatchesMatte(byte[] bytes, int offset, Color surface, Color[] palette)
-        {
-            int[] actual = { bytes[offset], bytes[offset + 1], bytes[offset + 2] };
-            int[] background = { surface.B, surface.G, surface.R };
-            foreach (Color color in palette)
-            {
-                int[] foreground = { color.B, color.G, color.R };
-                int channel = 0;
-                for (int i = 1; i < 3; i++)
-                    if (Math.Abs(foreground[i] - background[i]) > Math.Abs(foreground[channel] - background[channel])) channel = i;
-                int difference = foreground[channel] - background[channel];
-                if (difference == 0) continue;
-                double coverage = (actual[channel] - background[channel]) / (double)difference;
-                if (coverage < -0.02 || coverage > 1.02) continue;
-                bool matches = true;
-                for (int i = 0; i < 3; i++)
-                    matches &= Math.Abs(actual[i] - background[i] - coverage * (foreground[i] - background[i])) <= 2;
-                if (matches) return true;
-            }
-            return false;
         }
 
         private static void CheckBitmaps(Dictionary<string, bool> checks, VisualTheme theme, float scale,

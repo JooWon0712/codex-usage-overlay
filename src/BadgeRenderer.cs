@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -83,6 +84,20 @@ namespace PersonalUsageOverlay
 
         internal static Bitmap CreateTextBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation, BadgeLayoutSettings layout)
         {
+            theme = theme ?? VisualTheme.Dark;
+            Bitmap bitmap = CreateGlyphBitmap(size, scale, theme, presentation, layout);
+            try
+            {
+                AddTextOutline(bitmap, scale, theme.Surface);
+                return bitmap;
+            }
+            catch { bitmap.Dispose(); throw; }
+        }
+
+        // Keep the original antialiased glyph coverage, including thin strokes.
+        // It is also used to check the rendered text against the unmodified font.
+        internal static Bitmap CreateGlyphBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation, BadgeLayoutSettings layout)
+        {
             theme=theme??VisualTheme.Dark;
             var normalized=layout==null?new BadgeLayoutSettings():layout.Copy(); normalized.Normalize();
             var bitmap=new Bitmap(size.Width,size.Height,PixelFormat.Format32bppPArgb);
@@ -94,35 +109,70 @@ namespace PersonalUsageOverlay
                     graphics.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
                     DrawText(graphics,new Rectangle(Point.Empty,size),scale,theme,presentation,normalized);
                 }
-                // Preserve the opaque-theme appearance of every glyph pixel,
-                // including antialiasing. Background opacity never enters this
-                // layer's colors or alpha, even along the edges of the letters.
-                var data=bitmap.LockBits(new Rectangle(Point.Empty,size),ImageLockMode.ReadWrite,PixelFormat.Format32bppPArgb);
-                try
-                {
-                    int stride=checked(size.Width*4); var row=new byte[stride];
-                    for(int y=0;y<size.Height;y++)
-                    {
-                        IntPtr address=IntPtr.Add(data.Scan0,y*data.Stride); Marshal.Copy(address,row,0,stride);
-                        for(int x=0;x<stride;x+=4)
-                        {
-                            int alpha=row[x+3];
-                            // Do not turn barely visible antialias coverage into
-                            // an opaque light fringe on a transparent backdrop.
-                            if(alpha<128) {row[x]=row[x+1]=row[x+2]=row[x+3]=0;continue;}
-                            int inverse=255-alpha;
-                            row[x]=(byte)Math.Min(255,row[x]+(theme.Surface.B*inverse+127)/255);
-                            row[x+1]=(byte)Math.Min(255,row[x+1]+(theme.Surface.G*inverse+127)/255);
-                            row[x+2]=(byte)Math.Min(255,row[x+2]+(theme.Surface.R*inverse+127)/255);
-                            row[x+3]=255;
-                        }
-                        Marshal.Copy(row,0,address,stride);
-                    }
-                }
-                finally {bitmap.UnlockBits(data);}
                 return bitmap;
             }
             catch {bitmap.Dispose();throw;}
+        }
+
+        private static void AddTextOutline(Bitmap bitmap, float scale, Color surface)
+        {
+            var bounds = new Rectangle(Point.Empty, bitmap.Size);
+            BitmapData data = bitmap.LockBits(bounds, ImageLockMode.ReadWrite, PixelFormat.Format32bppPArgb);
+            try
+            {
+                int stride = checked(bitmap.Width * 4);
+                var glyph = new byte[checked(stride * bitmap.Height)];
+                for (int y = 0; y < bitmap.Height; y++)
+                    Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), glyph, y * stride, stride);
+                var outlined = (byte[])glyph.Clone();
+                double radius = Math.Max(1d, scale);
+                int reach = (int)Math.Ceiling(radius + 1d);
+                var taps = new List<OutlineTap>();
+                for (int dy = -reach; dy <= reach; dy++)
+                    for (int dx = -reach; dx <= reach; dx++)
+                    {
+                        double weight = Math.Min(1d, radius + 1d - Math.Sqrt(dx * dx + dy * dy));
+                        if (weight > 0) taps.Add(new OutlineTap { X = dx, Y = dy, Weight = weight });
+                    }
+                var outline = new byte[checked(bitmap.Width * bitmap.Height)];
+                for (int y = 0; y < bitmap.Height; y++)
+                    for (int x = 0; x < bitmap.Width; x++)
+                    {
+                        int alpha = glyph[y * stride + x * 4 + 3];
+                        if (alpha == 0) continue;
+                        foreach (OutlineTap tap in taps)
+                        {
+                            int tx = x + tap.X, ty = y + tap.Y;
+                            if (tx < 0 || tx >= bitmap.Width || ty < 0 || ty >= bitmap.Height) continue;
+                            int target = ty * bitmap.Width + tx;
+                            outline[target] = (byte)Math.Max(outline[target], (int)Math.Round(alpha * tap.Weight));
+                        }
+                    }
+                // A fixed one-DIP surface-colored outline keeps thin strokes
+                // readable on either backdrop. Composite the original coverage
+                // over it without thresholding or forcing partial pixels opaque.
+                for (int y = 0; y < bitmap.Height; y++)
+                    for (int x = 0; x < bitmap.Width; x++)
+                    {
+                        int offset = y * stride + x * 4;
+                        int alpha = glyph[offset + 3];
+                        int outlineAlpha = outline[y * bitmap.Width + x];
+                        int underlayAlpha = (outlineAlpha * (255 - alpha) + 127) / 255;
+                        outlined[offset] = (byte)Math.Min(255, glyph[offset] + (surface.B * underlayAlpha + 127) / 255);
+                        outlined[offset + 1] = (byte)Math.Min(255, glyph[offset + 1] + (surface.G * underlayAlpha + 127) / 255);
+                        outlined[offset + 2] = (byte)Math.Min(255, glyph[offset + 2] + (surface.R * underlayAlpha + 127) / 255);
+                        outlined[offset + 3] = (byte)(alpha + underlayAlpha);
+                    }
+                for (int y = 0; y < bitmap.Height; y++)
+                    Marshal.Copy(outlined, y * stride, IntPtr.Add(data.Scan0, y * data.Stride), stride);
+            }
+            finally { bitmap.UnlockBits(data); }
+        }
+
+        private struct OutlineTap
+        {
+            internal int X, Y;
+            internal double Weight;
         }
 
         public static void Draw(Graphics g, Rectangle bounds, float scale, VisualTheme theme,

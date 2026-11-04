@@ -52,8 +52,8 @@ namespace PersonalUsageOverlay
         private IntPtr target = IntPtr.Zero;
         private readonly Dictionary<uint, Tuple<bool, DateTime>> processCache = new Dictionary<uint, Tuple<bool, DateTime>>();
         private bool active;
-        private bool adjustingPosition;
-        private bool badgeWasAdjustment;
+        private bool settingsOverlayActive;
+        private bool badgeWasSettingsOverlay;
         private Rectangle lastBounds;
         private readonly string diagnostics;
         private DateTime lastDiagnostic = DateTime.MinValue, workerRestartAfter = DateTime.MinValue;
@@ -245,7 +245,7 @@ namespace PersonalUsageOverlay
                 && !Native.IsIconic(hwnd) && !IsCloaked(hwnd) && TargetProcess(hwnd);
         }
 
-        private bool FindAdjustmentTarget()
+        private bool FindSettingsTarget()
         {
             if (IsAvailableTarget(target)) return true;
             target = IntPtr.Zero;
@@ -277,11 +277,11 @@ namespace PersonalUsageOverlay
                 target = root;
             bool settingsNormal = settings != null && !settings.IsDisposed && settings.Visible && settings.WindowState == FormWindowState.Normal;
             bool settingsForeground = settingsNormal && settings.IsHandleCreated && foreground == settings.Handle;
-            bool positionPage = settingsNormal && settings.IsPositionPageSelected;
-            bool adjustmentTarget = settingsForeground && positionPage && FindAdjustmentTarget();
-            adjustingPosition = !codexForeground && adjustmentTarget;
-            bool show = PositionAdjustmentPolicy.CanShow(codexForeground, settingsForeground, positionPage, settingsNormal, adjustmentTarget);
-            // Adjustment is display-only. Keep regular account polling tied to Codex focus.
+            bool settingsTargetAvailable = settingsForeground && FindSettingsTarget();
+            settingsOverlayActive = !codexForeground && settingsTargetAvailable;
+            bool show = PositionAdjustmentPolicy.CanShow(codexForeground, settingsForeground, settingsNormal, settingsTargetAvailable);
+            // Both settings pages are display-only exceptions. Keep regular
+            // account polling tied to Codex focus.
             if (codexForeground != active)
             {
                 active = codexForeground;
@@ -316,15 +316,15 @@ namespace PersonalUsageOverlay
                             lastBounds = bounds;
                         }
 
-                        bool reveal = !badge.Visible || badgeWasAdjustment != adjustingPosition;
+                        bool reveal = !badge.Visible || badgeWasSettingsOverlay != settingsOverlayActive;
                         try
                         {
                             bool prepared=!reveal || badge.Present(0);
                             if(prepared && !badge.Visible) badge.Show();
-                            bool placed=prepared && (adjustingPosition ? BadgeZOrder.Place(badge.Handle,target,bounds)
+                            bool placed=prepared && (settingsOverlayActive ? BadgeZOrder.Place(badge.Handle,target,bounds)
                                 : Native.SetWindowPos(badge.Handle,new IntPtr(-1),bounds.X,bounds.Y,bounds.Width,bounds.Height,0x10|0x40));
                             if(!placed || !badge.Present()) badge.Hide();
-                            badgeWasAdjustment = adjustingPosition;
+                            badgeWasSettingsOverlay = settingsOverlayActive;
                         }
                         catch { badge.Hide(); }
                     }
@@ -635,7 +635,7 @@ namespace PersonalUsageOverlay
                     capturedAt = DateTime.UtcNow.ToString("o"),
                     visible = badge.Visible,
                     active = active,
-                    adjustingPosition = adjustingPosition,
+                    settingsOverlayActive = settingsOverlayActive,
                     position = Prefs.Position,
                     targetPid = targetPid,
                     targetHandle = target.ToInt64(),

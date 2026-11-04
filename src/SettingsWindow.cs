@@ -26,7 +26,6 @@ namespace PersonalUsageOverlay
         private readonly bool previewMode;
         private bool updating, problemExpanded;
         private float uiScale = 1;
-        internal bool IsPositionPageSelected { get; private set; }
 
         public SettingsWindow(ISettingsHost owner) : this(owner, null) { }
         internal SettingsWindow(ISettingsHost owner, float? previewScale)
@@ -43,7 +42,7 @@ namespace PersonalUsageOverlay
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
             AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
-            AddLabel(this, "추가 항목을 켜고 끄면서 오버레이 미리보기를 확인하세요.", 22, 56, 556, 24, 12, false);
+            AddLabel(this, "두 탭에서 설정을 바꾸며 Codex 위 실제 배지를 확인하세요.", 22, 56, 556, 24, 12, false);
             pageHost.SetBounds(20, 130, 560, 428); AddUi(this, pageHost);
             pages = new[] { overlayPage, positionPage };
             string[] pageNames = { "오버레이", "표시 위치 · 테마" };
@@ -86,7 +85,7 @@ namespace PersonalUsageOverlay
             AddNumber(positionPage, x, "가로 위치", 24, 158, 180, -4000, 4000);
             AddNumber(positionPage, y, "세로 위치", 240, 158, 184, 0, 3000);
             AddButton(positionPage, "기본 위치", 24, 204, 110, delegate { app.ResetPosition(); LoadPreferences(); });
-            AddLabel(positionPage, "조정 중 앱에 표시 · 설정 창이 겹치면 옆으로 옮기세요.", 24, 242, 508, 20, 11, false);
+            AddLabel(positionPage, "설정 중 Codex에 표시 · 설정 창이 겹치면 옆으로 옮기세요.", 24, 242, 508, 20, 11, false);
             AddLabel(positionPage, "테마", 24, 264, 508, 24, 12, true);
             AddChoice(positionPage, themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 24, 294, 400);
             themeStatus.SetBounds(24, 334, 508, 36); AddUi(positionPage, themeStatus);
@@ -220,7 +219,6 @@ namespace PersonalUsageOverlay
         private void SelectPage(int index)
         {
             if (index < 0 || index >= pages.Length) return;
-            IsPositionPageSelected = index == 1;
             for (int current = 0; current < pages.Length; current++)
             {
                 pages[current].Visible = current == index;
