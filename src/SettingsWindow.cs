@@ -193,7 +193,7 @@ namespace PersonalUsageOverlay
         }
         private void UpdatePreviewStatus()
         {
-            previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준";
+            previewStatus.Text = "예시 데이터 · " + (SystemInformation.HighContrast ? "고대비 배경" : "다크 배경") + " · 프로그램 시작 시각 기준";
             transparencyStatus.Text="배경 투명도 · "+(transparencyChoice.Value * 10)+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명"
                 : BadgeTextColors.Resolve(app.Theme,transparencyChoice.Value*10,false).Bright?" · 밝은 글자":" · 진한 글자");
         }

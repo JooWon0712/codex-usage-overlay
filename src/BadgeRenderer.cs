@@ -91,7 +91,7 @@ namespace PersonalUsageOverlay
                 var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
                 normalized.Normalize();
                 BadgeTextColors colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
-                if (colors.UseOutline) AddTextOutline(bitmap, scale, colors.OutlineColor);
+                if (colors.UseOutline) AddTextUnderlay(bitmap, scale, colors.OutlineColor, colors.UseSoftShadow);
                 return bitmap;
             }
             catch { bitmap.Dispose(); throw; }
@@ -118,7 +118,10 @@ namespace PersonalUsageOverlay
             catch {bitmap.Dispose();throw;}
         }
 
-        private static void AddTextOutline(Bitmap bitmap, float scale, Color surface)
+        internal static int ShadowOffsetY(float scale)
+        { return Math.Max(1, (int)Math.Round(scale / 2d)); }
+
+        private static void AddTextUnderlay(Bitmap bitmap, float scale, Color surface, bool softShadow)
         {
             var bounds = new Rectangle(Point.Empty, bitmap.Size);
             BitmapData data = bitmap.LockBits(bounds, ImageLockMode.ReadWrite, PixelFormat.Format32bppPArgb);
@@ -132,13 +135,20 @@ namespace PersonalUsageOverlay
                 double radius = Math.Max(1d, scale);
                 int reach = (int)Math.Ceiling(radius + 1d);
                 var taps = new List<OutlineTap>();
+                double totalWeight = 0;
                 for (int dy = -reach; dy <= reach; dy++)
                     for (int dx = -reach; dx <= reach; dx++)
                     {
                         double weight = Math.Min(1d, radius + 1d - Math.Sqrt(dx * dx + dy * dy));
-                        if (weight > 0) taps.Add(new OutlineTap { X = dx, Y = dy, Weight = weight });
+                        if (weight > 0)
+                        {
+                            taps.Add(new OutlineTap { X = dx, Y = dy, Weight = weight });
+                            totalWeight += weight;
+                        }
                     }
                 var outline = new byte[checked(bitmap.Width * bitmap.Height)];
+                var shadow = softShadow ? new double[outline.Length] : null;
+                int shiftY = softShadow ? ShadowOffsetY(scale) : 0;
                 for (int y = 0; y < bitmap.Height; y++)
                     for (int x = 0; x < bitmap.Width; x++)
                     {
@@ -146,21 +156,23 @@ namespace PersonalUsageOverlay
                         if (alpha == 0) continue;
                         foreach (OutlineTap tap in taps)
                         {
-                            int tx = x + tap.X, ty = y + tap.Y;
+                            int tx = x + tap.X, ty = y + tap.Y + shiftY;
                             if (tx < 0 || tx >= bitmap.Width || ty < 0 || ty >= bitmap.Height) continue;
                             int target = ty * bitmap.Width + tx;
-                            outline[target] = (byte)Math.Max(outline[target], (int)Math.Round(alpha * tap.Weight));
+                            if (softShadow) shadow[target] += alpha * tap.Weight;
+                            else outline[target] = (byte)Math.Max(outline[target], (int)Math.Round(alpha * tap.Weight));
                         }
                     }
-                // A fixed one-DIP surface-colored outline keeps thin strokes
-                // readable on either backdrop. Composite the original coverage
-                // over it without thresholding or forcing partial pixels opaque.
+                // Light bright text uses a small, blurred drop shadow rather
+                // than a heavy stroke. Dark/high contrast retain the outline.
+                // Keep the original font coverage; never threshold its edges.
                 for (int y = 0; y < bitmap.Height; y++)
                     for (int x = 0; x < bitmap.Width; x++)
                     {
                         int offset = y * stride + x * 4;
                         int alpha = glyph[offset + 3];
-                        int outlineAlpha = outline[y * bitmap.Width + x];
+                        int pixel = y * bitmap.Width + x;
+                        int outlineAlpha = softShadow ? (int)Math.Round(shadow[pixel] * 0.85d / totalWeight) : outline[pixel];
                         int underlayAlpha = (outlineAlpha * (255 - alpha) + 127) / 255;
                         outlined[offset] = (byte)Math.Min(255, glyph[offset] + (surface.B * underlayAlpha + 127) / 255);
                         outlined[offset + 1] = (byte)Math.Min(255, glyph[offset + 1] + (surface.G * underlayAlpha + 127) / 255);

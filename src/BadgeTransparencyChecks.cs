@@ -32,6 +32,7 @@ namespace PersonalUsageOverlay
             // No window, account, desktop-pixel sampling or system-setting change.
             bool highContrast = SystemInformation.HighContrast;
             CheckProfiles(checks);
+            CheckSoftShadow(checks, started, zone, highContrast);
             UsagePresentation preview = UsagePresentation.CreatePreview(started, zone);
             foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
@@ -42,17 +43,20 @@ namespace PersonalUsageOverlay
 
         private static void CheckProfiles(Dictionary<string, bool> checks)
         {
-            bool dark = true, light = true, original = true, contrast = true, floor = true, high = true;
+            bool dark = true, light = true, original = true, contrast = true, floor = true, high = true, neutral = true, shadowPolicy = true;
             Color[] source = Palette(VisualTheme.Light);
+            source[2] = source[3] = VisualTheme.Light.Muted;
             foreach (int percent in PercentSteps)
             {
                 BadgeTextColors darkColors = BadgeTextColors.Resolve(VisualTheme.Dark, percent, false);
                 dark &= SamePalette(Palette(darkColors), Palette(VisualTheme.Dark)) && darkColors.Bright
-                    && darkColors.UseOutline && darkColors.OutlineColor == VisualTheme.Dark.Surface;
+                    && darkColors.UseOutline && !darkColors.UseSoftShadow && darkColors.OutlineColor == VisualTheme.Dark.Surface;
                 BadgeTextColors colors = BadgeTextColors.Resolve(VisualTheme.Light, percent, false);
+                neutral &= colors.Success == colors.Muted && colors.Accent == colors.Muted;
+                shadowPolicy &= colors.UseSoftShadow == (percent >= 50);
                 if (percent < 50)
                 {
-                    light &= !colors.Bright && !colors.UseOutline;
+                    light &= !colors.Bright && !colors.UseOutline && !colors.UseSoftShadow;
                     Color minimum = BadgeTextColors.MinimumBody(VisualTheme.Light.Surface, percent);
                     int alpha = (int)Math.Round(255d * (100 - percent) / 100d);
                     floor &= minimum.R == (VisualTheme.Light.Surface.R * alpha + 127) / 255
@@ -70,9 +74,9 @@ namespace PersonalUsageOverlay
                 }
                 else
                 {
-                    light &= colors.Bright && colors.UseOutline && colors.OutlineColor == VisualTheme.Dark.Surface
+                    light &= colors.Bright && colors.UseOutline && colors.UseSoftShadow && colors.OutlineColor == VisualTheme.Dark.Surface
                         && SamePalette(Palette(colors), Palette(BadgeTextColors.Resolve(VisualTheme.Light,50,false)))
-                        && colors.Muted.R >= 220 && colors.Accent.R >= 210 && colors.Success.G > colors.Success.R
+                        && colors.Muted.R >= 220 && colors.Accent == colors.Muted && colors.Success == colors.Muted
                         && colors.Attention.R > colors.Attention.B && colors.DangerText.R > colors.DangerText.G;
                     foreach (Color foreground in Palette(colors))
                         light &= BadgeTextColors.Contrast(foreground,colors.OutlineColor)>=4.5;
@@ -82,19 +86,21 @@ namespace PersonalUsageOverlay
                     VisualTheme system = VisualTheme.For(darkSystem, true);
                     BadgeTextColors systemColors = BadgeTextColors.Resolve(system, percent, true);
                     high &= SamePalette(Palette(systemColors), Palette(system)) && !systemColors.Bright
-                        && systemColors.UseOutline && systemColors.OutlineColor == system.Surface;
+                        && systemColors.UseOutline && !systemColors.UseSoftShadow && systemColors.OutlineColor == system.Surface;
                 }
             }
             BadgeTextColors forty = BadgeTextColors.Resolve(VisualTheme.Light, 40, false);
             BadgeTextColors fifty = BadgeTextColors.Resolve(VisualTheme.Light, 50, false);
             checks["badge_foreground_dark_palette_and_outline_are_invariant_at_all_steps"] = dark;
             checks["badge_foreground_light_uses_dark_text_below_fifty_and_bright_text_from_fifty"] = light;
+            checks["badge_foreground_light_normal_update_date_and_countdown_share_neutral_secondary_tone"] = neutral;
+            checks["badge_foreground_soft_shadow_is_only_for_light_bright_profile"] = shadowPolicy;
             checks["badge_foreground_light_preserves_sufficient_original_colors_and_only_darkens_others"] = original;
             checks["badge_foreground_light_dark_candidates_have_4_5_contrast_against_black_backdrop_floor"] = contrast;
             checks["badge_foreground_floor_is_actual_paper_gray_alpha_over_black"] = floor;
-            checks["badge_foreground_forty_to_fifty_switch_changes_only_foreground_profile"] = !forty.Bright && !forty.UseOutline
-                && fifty.Bright && fifty.UseOutline && forty.Text != fifty.Text
-                && VisualTheme.Light.Surface.ToArgb() == Color.FromArgb(0xe4, 0xe5, 0xe6).ToArgb();
+            checks["badge_foreground_forty_to_fifty_switch_changes_only_foreground_profile"] = !forty.Bright && !forty.UseOutline && !forty.UseSoftShadow
+                && fifty.Bright && fifty.UseOutline && fifty.UseSoftShadow && forty.Text != fifty.Text
+                && VisualTheme.Light.Surface.ToArgb() == Color.FromArgb(0xdb, 0xde, 0xe2).ToArgb();
             checks["badge_foreground_high_contrast_keeps_system_palette_before_opacity_policy"] = high;
             checks["badge_foreground_null_and_invalid_percent_resolve_to_clamped_profiles"] =
                 SamePalette(Palette(BadgeTextColors.Resolve(null, 0, false)), Palette(VisualTheme.Dark))
@@ -127,7 +133,8 @@ namespace PersonalUsageOverlay
                             using (Bitmap referenceTextBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, layout))
                             {
                                 RawBitmap referenceGlyph = ReadPixels(referenceGlyphBitmap), referenceText = ReadPixels(referenceTextBitmap);
-                                bool[] allowedOutline = OutlineBounds(referenceGlyph, size, scale);
+                                bool[] allowedOutline = UnderlayBounds(referenceGlyph, size, scale, false);
+                                bool[] allowedShadow = UnderlayBounds(referenceGlyph, size, scale, true);
                                 foreach (int percent in PercentSteps)
                                 {
                                     combinations++;
@@ -163,7 +170,9 @@ namespace PersonalUsageOverlay
                                             }
                                             else
                                                 for (int channel = 0; channel < 4; channel++) colors &= glyph.Data[offset + channel] == text.Data[offset + channel];
-                                            bool allowed = profile.UseOutline ? allowedOutline[offset / 4] : alpha > 0;
+                                            bool allowed = profile.UseOutline
+                                                ? (profile.UseSoftShadow ? allowedShadow[offset / 4] : allowedOutline[offset / 4])
+                                                : alpha > 0;
                                             if (!allowed)
                                                 for (int channel = 0; channel < 4; channel++) bounds &= text.Data[offset + channel] == 0;
                                             if (textAlpha > 0) composited &= SourceOverMatches(text.Data, full.Data, offset, sample);
@@ -191,13 +200,76 @@ namespace PersonalUsageOverlay
             checks["badge_transparency_all_states_glyph_text_and_full_layers_use_premultiplied_format"] = formats;
             checks["badge_transparency_original_low_and_high_aa_coverage_is_never_deleted"] = coverage;
             checks["badge_transparency_glyph_contribution_and_opaque_centers_match_each_resolved_profile"] = colors;
-            checks["badge_transparency_enabled_outline_keeps_soft_partial_alpha"] = outline;
-            checks["badge_transparency_no_fixed_row_backing_or_pixels_outside_glyph_and_thin_outline"] = bounds;
+            checks["badge_transparency_enabled_outline_or_soft_shadow_keeps_partial_alpha"] = outline;
+            checks["badge_transparency_no_fixed_row_backing_or_pixels_outside_glyph_and_profile_underlay"] = bounds;
             checks["badge_transparency_full_bitmap_uses_source_over_for_every_glyph_and_outline_pixel"] = composited;
             checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
             checks["badge_transparency_all_glyphs_composite_correctly_on_black_white_and_colored_backdrops"] = backdrops;
             checks["badge_transparency_dark_glyph_and_outline_rgba_are_unchanged_by_opacity"] = darkInvariant;
             checks["badge_transparency_all_eleven_steps_cover_528_state_size_theme_combinations"] = combinations == 528;
+        }
+
+        private static void CheckSoftShadow(Dictionary<string, bool> checks, DateTimeOffset started,
+            TimeZoneInfo zone, bool highContrast)
+        {
+            bool mask = true, partial = true, centers = true;
+            foreach (float scale in new[] { 1f, 1.5f, 2f })
+            {
+                if (highContrast) continue;
+                var layout = new BadgeLayoutSettings { BackgroundTransparency = 100 };
+                layout.Elements.Find(element => element.Key == "weekly-reset").Visible = false;
+                layout.Normalize();
+                var size = new Size((int)Math.Round(layout.Width * scale), (int)Math.Round(layout.Height * scale));
+                UsagePresentation presentation = UsagePresentation.CreatePreview(started, zone);
+                using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                {
+                    RawBitmap glyph = ReadPixels(glyphBitmap), text = ReadPixels(textBitmap);
+                    double radius = Math.Max(1d, scale);
+                    int reach = (int)Math.Ceiling(radius + 1d), shift = Math.Max(1, (int)Math.Round(scale / 2d));
+                    double totalWeight = 0;
+                    for (int dy = -reach; dy <= reach; dy++)
+                        for (int dx = -reach; dx <= reach; dx++)
+                            totalWeight += Math.Max(0d, Math.Min(1d, radius + 1d - Math.Sqrt(dx * dx + dy * dy)));
+                    int partialPixels = 0;
+                    // Gather at each destination, independently of the renderer's
+                    // source-scatter implementation, including empty mask samples.
+                    for (int y = 0; y < size.Height; y++)
+                        for (int x = 0; x < size.Width; x++)
+                        {
+                            double weighted = 0;
+                            for (int dy = -reach; dy <= reach; dy++)
+                                for (int dx = -reach; dx <= reach; dx++)
+                                {
+                                    int sourceX = x - dx, sourceY = y - dy - shift;
+                                    if (sourceX < 0 || sourceX >= size.Width || sourceY < 0 || sourceY >= size.Height) continue;
+                                    double weight = Math.Max(0d, Math.Min(1d, radius + 1d - Math.Sqrt(dx * dx + dy * dy)));
+                                    weighted += glyph.Channel(new Point(sourceX, sourceY), 3) * weight;
+                                }
+                            var point = new Point(x, y);
+                            int glyphAlpha = glyph.Channel(point, 3);
+                            int shadowAlpha = (int)Math.Round(weighted * 0.85d / totalWeight);
+                            int expected = glyphAlpha + (shadowAlpha * (255 - glyphAlpha) + 127) / 255;
+                            // Different accumulation order can straddle a half
+                            // integer; permit one alpha unit of rounding only.
+                            mask &= Math.Abs(text.Channel(point, 3) - expected) <= 1;
+                            if (glyphAlpha == 0 && text.Channel(point, 3) > 0)
+                            {
+                                partialPixels++;
+                                partial &= text.Channel(point, 3) <= 217;
+                            }
+                            if (glyphAlpha == 255)
+                                for (int channel = 0; channel < 4; channel++) centers &= glyph.Channel(point, channel) == text.Channel(point, channel);
+                        }
+                    partial &= partialPixels > 0;
+                }
+            }
+            checks["badge_light_soft_shadow_matches_weighted_average_alpha_and_downward_offset"] = mask;
+            checks["badge_light_soft_shadow_is_partial_at_empty_glyph_pixels_and_keeps_opaque_centers"] = partial && centers;
+            checks["badge_light_soft_shadow_offset_is_one_physical_pixel_at_common_dpi_and_scales_above_it"] =
+                BadgeRenderer.ShadowOffsetY(1f) == 1 && BadgeRenderer.ShadowOffsetY(1.5f) == 1
+                && BadgeRenderer.ShadowOffsetY(2f) == 1 && BadgeRenderer.ShadowOffsetY(3f) == 2
+                && BadgeRenderer.ShadowOffsetY(4f) == 2;
         }
 
         private static bool OpaqueCentersMatch(Bitmap bitmap, RawBitmap glyph, RawBitmap text, float scale,
@@ -359,20 +431,22 @@ namespace PersonalUsageOverlay
                 if (Math.Abs(actual[offset + channel] - source[offset + channel] - (background[channel] * inverse + 127) / 255) > 2) return false;
             return true;
         }
-        private static bool[] OutlineBounds(RawBitmap glyph, Size size, float scale)
+        private static bool[] UnderlayBounds(RawBitmap glyph, Size size, float scale, bool softShadow)
         {
             var allowed = new bool[size.Width * size.Height];
             double reach = Math.Max(1d, scale) + 1d;
             int radius = (int)Math.Ceiling(reach);
+            int offsetY = softShadow ? Math.Max(1, (int)Math.Round(scale / 2f)) : 0;
             for (int y = 0; y < size.Height; y++)
                 for (int x = 0; x < size.Width; x++)
                 {
                     if (glyph.Channel(new Point(x, y), 3) == 0) continue;
+                    allowed[y * size.Width + x] = true;
                     for (int dy = -radius; dy <= radius; dy++)
                         for (int dx = -radius; dx <= radius; dx++)
                             if (dx * dx + dy * dy <= reach * reach)
                             {
-                                int tx = x + dx, ty = y + dy;
+                                int tx = x + dx, ty = y + dy + offsetY;
                                 if (tx >= 0 && tx < size.Width && ty >= 0 && ty < size.Height) allowed[ty * size.Width + tx] = true;
                             }
                 }

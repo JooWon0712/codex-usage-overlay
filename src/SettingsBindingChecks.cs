@@ -12,6 +12,7 @@ namespace PersonalUsageOverlay
         public static void Run(Dictionary<string, bool> checks)
         {
             CheckInMemorySettingsBindings(checks);
+            CheckPreviewCanvasBindings(checks);
             CheckTransparencyBindings(checks);
             CheckFailureDisclosure(checks);
             CheckJsonRoundTrip(checks);
@@ -110,6 +111,35 @@ namespace PersonalUsageOverlay
                 checks["settings_binding_options_position_theme_and_reload_preserve_cached_example"] = PreviewUnchanged(preview,
                     cachedPreview, cachedText, previewLabel, cachedLabel);
             }
+        }
+
+        private static void CheckPreviewCanvasBindings(Dictionary<string, bool> checks)
+        {
+            bool canvas = true, label = true, unchanged = true;
+            foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+            {
+                var host = new SettingsPreviewHost(theme);
+                host.Prefs.BadgeLayout.BackgroundTransparency = 50;
+                using (var window = new SettingsWindow(host, 1f))
+                {
+                    BadgePreview preview = Field<BadgePreview>(window, "preview");
+                    Label caption = Field<Label>(window, "previewStatus");
+                    UsagePresentation example = preview.Presentation;
+                    string text = PreviewText(example), expectedLabel = "예시 데이터 · "
+                        + (SystemInformation.HighContrast ? "고대비 배경" : "다크 배경") + " · 프로그램 시작 시각 기준";
+                    canvas &= preview.CanvasColor == (SystemInformation.HighContrast ? theme.Background : VisualTheme.Dark.Background)
+                        && preview.LayoutSettings.BackgroundTransparency == 50;
+                    label &= caption.Text == expectedLabel && IsExamplePreview(example, host.StartedAt);
+                    window.SelectPreviewPage(1);
+                    window.SelectPreviewPage(0);
+                    window.LoadPreferences();
+                    unchanged &= PreviewUnchanged(preview, example, text, caption, expectedLabel)
+                        && !Object.ReferenceEquals(example, host.Presentation) && !window.Visible;
+                }
+            }
+            checks["settings_preview_canvas_is_explicit_dark_example_for_both_selected_themes"] = canvas;
+            checks["settings_preview_label_declares_example_canvas_and_launch_clock"] = label;
+            checks["settings_preview_canvas_page_selection_and_reload_keep_example_immutable"] = unchanged;
         }
 
         private static void CheckTransparencyBindings(Dictionary<string, bool> checks)

@@ -33,13 +33,38 @@ namespace PersonalUsageOverlay
                         }
                     checks[name + "button_corners_are_painted_without_background_callback"] = buttons;
                     checks[name + "checkbox_label_has_no_unpainted_black_buffer"] = choices;
-                    checks[name + "selected_button_has_hover_fill_and_preserves_button_properties"] = SelectedButton(theme, scale);
+                    checks[name + "selected_button_has_theme_fill_and_preserves_button_properties"] = SelectedButton(theme, scale);
+                    if (!theme.IsDark)
+                        checks[name + "selected_ink_tab_has_dark_fill_light_text_and_no_native_handle"] = SelectedInkTab(scale);
                     checks[name + "partial_paint_preserves_clipping_for_background_and_text"] = ClipIsPreserved(theme, scale, false)
                         && ClipIsPreserved(theme, scale, true);
                     checks[name + "translated_paint_keeps_text_inside_its_control"] = TranslationIsPreserved(theme, scale, false)
                         && TranslationIsPreserved(theme, scale, true);
                     checks[name + "unparented_controls_use_theme_background"] = UnparentedBackground(theme, scale);
+                    checks[name + "preview_uses_declared_example_canvas_in_actual_corner_pixels"] = PreviewCanvas(theme, scale);
                 }
+        }
+
+        private static bool PreviewCanvas(VisualTheme theme, float scale)
+        {
+            using (var parent = new Panel { BackColor = ParentBackground, Visible = false })
+            using (var preview = new BadgePreview
+            {
+                Theme = theme, UiScale = scale, Size = SizeFor(380, 130, scale),
+                LayoutSettings = new BadgeLayoutSettings { BackgroundTransparency = 50 },
+                Presentation = UsagePresentation.CreatePreview(new DateTimeOffset(2026, 11, 4, 10, 59, 37, TimeSpan.Zero), TimeZoneInfo.Utc)
+            })
+            {
+                parent.Controls.Add(preview);
+                using (Bitmap bitmap = PaintOnly(preview, scale, null, Point.Empty))
+                {
+                    Color expected = SystemInformation.HighContrast ? theme.Background : VisualTheme.Dark.Background;
+                    return preview.CanvasColor == expected && CornersEqual(bitmap, expected)
+                        && preview.LayoutSettings.BackgroundTransparency == 50
+                        && preview.Presentation.MainText == "주간 96% 남음"
+                        && !preview.IsHandleCreated && !parent.IsHandleCreated;
+                }
+            }
         }
 
         private static bool ButtonPaintsWholeClient(VisualTheme theme, float scale, bool enabled, bool selected)
@@ -98,12 +123,41 @@ namespace PersonalUsageOverlay
                     button.Selected = true;
                     using (Bitmap selected = PaintOnly(button, scale, null, Point.Empty))
                     {
-                        bool fill = Same(normal.GetPixel(x, y), theme.Surface) && Same(selected.GetPixel(x, y), theme.Hover);
+                        Color expected = Object.ReferenceEquals(theme, VisualTheme.Light) && !SystemInformation.HighContrast
+                            ? Color.FromArgb(0x30, 0x38, 0x44) : theme.Hover;
+                        bool fill = Same(normal.GetPixel(x, y), theme.Surface) && Same(selected.GetPixel(x, y), expected);
                         bool properties = button.Selected && button.Enabled && button.TabStop && !button.UseMnemonic
                             && button.DialogResult == DialogResult.Cancel;
                         button.Selected = false;
                         return fill && properties && !button.Selected && !button.IsHandleCreated;
                     }
+                }
+            }
+        }
+
+        private static bool SelectedInkTab(float scale)
+        {
+            using (var font = FontFor(scale))
+            using (var parent = new Panel { BackColor = ParentBackground, Visible = false })
+            using (var button = new ThemedButton
+            {
+                Theme = VisualTheme.Light, ScaleFactor = scale, Size = SizeFor(180, 32, scale),
+                Font = font, Text = "오버레이", Selected = true
+            })
+            {
+                parent.Controls.Add(button);
+                using (Bitmap bitmap = PaintOnly(button, scale, null, Point.Empty))
+                {
+                    bool ink = !SystemInformation.HighContrast;
+                    Color fill = ink ? Color.FromArgb(0x30, 0x38, 0x44) : VisualTheme.Light.Hover;
+                    Color text = ink ? Color.FromArgb(0xf2, 0xf4, 0xf7) : VisualTheme.Light.Text;
+                    bool visibleText = false;
+                    for (int y = 0; y < bitmap.Height; y++)
+                        for (int x = 0; x < bitmap.Width; x++)
+                            visibleText |= Same(bitmap.GetPixel(x, y), text);
+                    return Same(bitmap.GetPixel(button.Width / 2, button.Height - (int)Math.Ceiling(5 * scale)), fill)
+                        && visibleText && BadgeTextColors.Contrast(text, fill) >= 4.5
+                        && !button.IsHandleCreated && !parent.IsHandleCreated;
                 }
             }
         }

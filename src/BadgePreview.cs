@@ -21,6 +21,10 @@ namespace PersonalUsageOverlay
             get { return theme; }
             set { theme = value ?? VisualTheme.Dark; Invalidate(); }
         }
+        internal Color CanvasColor
+        {
+            get { return SystemInformation.HighContrast ? theme.Background : VisualTheme.Dark.Background; }
+        }
         public BadgeLayoutSettings LayoutSettings
         {
             get { return layout; }
@@ -35,7 +39,7 @@ namespace PersonalUsageOverlay
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            using (var fill = new SolidBrush(theme.Background)) e.Graphics.FillRectangle(fill, ClientRectangle);
+            using (var fill = new SolidBrush(CanvasColor)) e.Graphics.FillRectangle(fill, ClientRectangle);
             float margin = 16 * UiScale;
             float scale = Math.Min(UiScale, Math.Min((Width - 2 * margin) / layout.Width, (Height - 2 * margin) / layout.Height));
             if (scale <= 0) return;

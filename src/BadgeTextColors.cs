@@ -7,7 +7,7 @@ namespace PersonalUsageOverlay
     internal sealed class BadgeTextColors
     {
         internal Color Text, Muted, Accent, Success, Attention, Danger, DangerText, OutlineColor;
-        internal bool Bright, UseOutline;
+        internal bool Bright, UseOutline, UseSoftShadow;
 
         internal static BadgeTextColors Resolve(VisualTheme theme, int transparency, bool highContrast)
         {
@@ -20,6 +20,7 @@ namespace PersonalUsageOverlay
                 Success=foreground.Success, Attention=foreground.Attention,
                 Danger=foreground.Danger, DangerText=foreground.DangerText,
                 Bright=bright, UseOutline=highContrast || bright,
+                UseSoftShadow=bright && !theme.IsDark,
                 OutlineColor=bright ? VisualTheme.Dark.Surface : theme.Surface
             };
             if (bright && !theme.IsDark)
@@ -28,11 +29,16 @@ namespace PersonalUsageOverlay
                 // badge. Lift small labels as well as the main heading.
                 result.Text=Color.FromArgb(0xf8,0xfa,0xfc);
                 result.Muted=Color.FromArgb(0xe2,0xe8,0xf0);
-                result.Accent=Color.FromArgb(0xd7,0xe4,0xf5);
-                result.Success=Color.FromArgb(0xb4,0xf1,0xd4);
                 result.Attention=Color.FromArgb(0xff,0xe0,0xa3);
                 result.Danger=Color.FromArgb(0xff,0xac,0xb8);
                 result.DangerText=Color.FromArgb(0xff,0xc2,0xcd);
+            }
+            if (!highContrast && !theme.IsDark)
+            {
+                // Neutral ink uses one secondary tone for ordinary information
+                // in both opacity profiles. Warning/failure colors keep their meaning.
+                result.Success=result.Muted;
+                result.Accent=result.Muted;
             }
             if (!highContrast && !bright)
             {
