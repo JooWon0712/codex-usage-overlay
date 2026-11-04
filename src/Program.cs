@@ -3,8 +3,8 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.6.5.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.6.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.6.6.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.6.6.0")]
 [assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
 namespace PersonalUsageOverlay
 {
