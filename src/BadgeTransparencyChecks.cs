@@ -33,6 +33,151 @@ namespace PersonalUsageOverlay
             foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
                     CheckBitmaps(checks, theme, scale, presentation, highContrast);
+            CheckEveryGlyphPixel(checks, started, zone, highContrast);
+        }
+
+        private static void CheckEveryGlyphPixel(Dictionary<string, bool> checks, DateTimeOffset started,
+            TimeZoneInfo zone, bool highContrast)
+        {
+            bool formats = true, glyphs = true, opaque = true, masks = true, colors = true,
+                composited = true, matte = true, backgrounds = true;
+            UsagePresentation[] states = GlyphStates(started, zone);
+            foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                foreach (float scale in new[] { 1f, 1.5f, 2f })
+                    foreach (bool date in new[] { false, true })
+                        foreach (UsagePresentation presentation in states)
+                        {
+                            var baselineLayout = new BadgeLayoutSettings();
+                            baselineLayout.Elements.Find(element => element.Key == "weekly-reset").Visible = date;
+                            baselineLayout.Normalize();
+                            var size = new Size((int)Math.Round(baselineLayout.Width * scale), (int)Math.Round(baselineLayout.Height * scale));
+                            Color mainColor = presentation.LowWeeklyRemaining.HasValue ? theme.DangerText : theme.Text;
+                            Color stateColor = presentation.Tone == UsageTone.Low ? theme.Danger
+                                : presentation.Tone == UsageTone.Normal ? theme.Success : theme.Attention;
+                            Color[] palette = { mainColor, stateColor, theme.Muted,
+                                presentation.LowWeeklyRemaining.HasValue ? theme.DangerText : theme.Accent };
+                            using (Bitmap baselineBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, baselineLayout))
+                            {
+                                formats &= baselineBitmap.Size == size && baselineBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
+                                RawBitmap baseline = ReadPixels(baselineBitmap);
+                                int baselineCount = 0, antialiased = 0;
+                                for (int offset = 0; offset < baseline.Data.Length; offset += 4)
+                                {
+                                    if (baseline.Data[offset + 3] == 0) continue;
+                                    baselineCount++;
+                                    bool exactForeground = false;
+                                    foreach (Color foreground in palette)
+                                        exactForeground |= MatchesRgb(baseline.Data, offset, foreground);
+                                    if (!exactForeground && !MatchesRgb(baseline.Data, offset, theme.Surface)) antialiased++;
+                                    matte &= !MatchesRgb(baseline.Data, offset, theme.Surface)
+                                        && MatchesMatte(baseline.Data, offset, theme.Surface, palette);
+                                }
+                                var heading = new Rectangle((int)Math.Round(10 * scale), (int)Math.Round(6 * scale),
+                                    (int)Math.Round(214 * scale), (int)Math.Round(25 * scale));
+                                glyphs &= baselineCount > 0 && baselineCount < size.Width * size.Height
+                                    && baseline.FindOpaqueText(heading, mainColor).X >= 0;
+                                matte &= antialiased > 0;
+
+                                foreach (int percent in new[] { 0, 25, 50, 100 })
+                                {
+                                    BadgeLayoutSettings layout = baselineLayout.Copy();
+                                    layout.BackgroundTransparency = percent;
+                                    using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, layout))
+                                    using (Bitmap fullBitmap = BadgeRenderer.CreateBitmap(size, scale, theme, presentation, layout))
+                                    {
+                                        formats &= textBitmap.Size == size && fullBitmap.Size == size
+                                            && textBitmap.PixelFormat == PixelFormat.Format32bppPArgb
+                                            && fullBitmap.PixelFormat == PixelFormat.Format32bppPArgb;
+                                        RawBitmap text = ReadPixels(textBitmap), full = ReadPixels(fullBitmap);
+                                        if (text.Data.Length != baseline.Data.Length || full.Data.Length != baseline.Data.Length)
+                                        {
+                                            masks = colors = composited = backgrounds = false;
+                                            continue;
+                                        }
+                                        int count = 0;
+                                        int expectedAlpha = BadgeRenderer.BackgroundAlpha(percent, highContrast);
+                                        int inset = (int)Math.Ceiling(12 * scale);
+                                        for (int offset = 0; offset < text.Data.Length; offset += 4)
+                                        {
+                                            bool baselineGlyph = baseline.Data[offset + 3] > 0;
+                                            bool currentGlyph = text.Data[offset + 3] > 0;
+                                            masks &= baselineGlyph == currentGlyph;
+                                            if (baselineGlyph || currentGlyph)
+                                                for (int channel = 0; channel < 4; channel++)
+                                                    colors &= text.Data[offset + channel] == baseline.Data[offset + channel];
+                                            if (currentGlyph)
+                                            {
+                                                count++;
+                                                opaque &= text.Data[offset + 3] == 255;
+                                                for (int channel = 0; channel < 4; channel++)
+                                                {
+                                                    composited &= full.Data[offset + channel] == text.Data[offset + channel];
+                                                }
+                                            }
+                                            else
+                                            {
+                                                // The text-only layer must not retain its opaque matte.
+                                                opaque &= text.Data[offset] == 0 && text.Data[offset + 1] == 0 && text.Data[offset + 2] == 0;
+                                                int pixel = offset / 4, x = pixel % size.Width, y = pixel / size.Width;
+                                                if (x >= inset && x < size.Width - inset && y >= inset && y < size.Height - inset)
+                                                    backgrounds &= Math.Abs(full.Data[offset + 3] - expectedAlpha) <= 1;
+                                                if (expectedAlpha == 0)
+                                                    backgrounds &= full.Data[offset] == 0 && full.Data[offset + 1] == 0
+                                                        && full.Data[offset + 2] == 0 && full.Data[offset + 3] == 0;
+                                            }
+                                        }
+                                        masks &= count == baselineCount;
+                                    }
+                                }
+                            }
+                        }
+            checks["badge_transparency_all_states_text_layers_have_expected_size_and_pargb_format"] = formats;
+            checks["badge_transparency_all_states_and_sizes_keep_visible_main_glyphs_and_state_colors"] = glyphs;
+            checks["badge_transparency_every_glyph_pixel_is_opaque_and_text_layer_has_no_matte_background"] = opaque;
+            checks["badge_transparency_every_glyph_mask_and_pixel_count_is_invariant_at_all_percent_values"] = masks;
+            checks["badge_transparency_every_glyph_rgba_including_aa_is_invariant_at_all_percent_values"] = colors;
+            checks["badge_transparency_full_bitmap_matches_every_text_layer_glyph_pixel_exactly"] = composited;
+            checks["badge_transparency_aa_pixels_use_opaque_surface_matte_and_are_not_discarded"] = matte;
+            checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
+        }
+
+        private static UsagePresentation[] GlyphStates(DateTimeOffset started, TimeZoneInfo zone)
+        {
+            var low = new UsageState { status = "ok", observedAt = started.ToString("o", CultureInfo.InvariantCulture) };
+            low.windows.Add(new LimitWindow { limitId = "codex", window = "primary", windowDurationMins = QuotaPeriods.WeeklyMinutes,
+                remainingPercent = 14, resetsAt = started.AddDays(7).ToUnixTimeSeconds() });
+            var stale = new UsageState { status = "stale", observedAt = started.AddMinutes(-4).ToString("o", CultureInfo.InvariantCulture),
+                attemptedAt = started.ToString("o", CultureInfo.InvariantCulture), reason = "request_timeout", windows = low.windows };
+            var unavailable = new UsageState { status = "unavailable", reason = "usage_unavailable", attemptedAt = started.ToString("o", CultureInfo.InvariantCulture) };
+            return new[] { UsagePresentation.CreatePreview(started, zone), UsagePresentation.Create(low, started, zone),
+                UsagePresentation.Create(stale, started, zone), UsagePresentation.Create(unavailable, started, zone) };
+        }
+
+        private static bool MatchesRgb(byte[] bytes, int offset, Color color)
+        {
+            return bytes[offset] == color.B && bytes[offset + 1] == color.G && bytes[offset + 2] == color.R;
+        }
+
+        private static bool MatchesMatte(byte[] bytes, int offset, Color surface, Color[] palette)
+        {
+            int[] actual = { bytes[offset], bytes[offset + 1], bytes[offset + 2] };
+            int[] background = { surface.B, surface.G, surface.R };
+            foreach (Color color in palette)
+            {
+                int[] foreground = { color.B, color.G, color.R };
+                int channel = 0;
+                for (int i = 1; i < 3; i++)
+                    if (Math.Abs(foreground[i] - background[i]) > Math.Abs(foreground[channel] - background[channel])) channel = i;
+                int difference = foreground[channel] - background[channel];
+                if (difference == 0) continue;
+                double coverage = (actual[channel] - background[channel]) / (double)difference;
+                if (coverage < -0.02 || coverage > 1.02) continue;
+                bool matches = true;
+                for (int i = 0; i < 3; i++)
+                    matches &= Math.Abs(actual[i] - background[i] - coverage * (foreground[i] - background[i])) <= 2;
+                if (matches) return true;
+            }
+            return false;
         }
 
         private static void CheckBitmaps(Dictionary<string, bool> checks, VisualTheme theme, float scale,
@@ -126,6 +271,7 @@ namespace PersonalUsageOverlay
             private readonly Size size;
             private readonly byte[] bytes;
             public RawBitmap(Size size, byte[] bytes) { this.size = size; this.bytes = bytes; }
+            public byte[] Data { get { return bytes; } }
             public int Channel(Point point, int channel) { return bytes[(point.Y * size.Width + point.X) * 4 + channel]; }
             public bool IsPremultiplied()
             {

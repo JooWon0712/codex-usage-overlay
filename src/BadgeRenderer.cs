@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PersonalUsageOverlay
@@ -80,6 +81,50 @@ namespace PersonalUsageOverlay
             catch { bitmap.Dispose(); throw; }
         }
 
+        internal static Bitmap CreateTextBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation, BadgeLayoutSettings layout)
+        {
+            theme=theme??VisualTheme.Dark;
+            var normalized=layout==null?new BadgeLayoutSettings():layout.Copy(); normalized.Normalize();
+            var bitmap=new Bitmap(size.Width,size.Height,PixelFormat.Format32bppPArgb);
+            try
+            {
+                using(var graphics=Graphics.FromImage(bitmap))
+                {
+                    graphics.Clear(Color.Transparent);
+                    graphics.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
+                    DrawText(graphics,new Rectangle(Point.Empty,size),scale,theme,presentation,normalized);
+                }
+                // Preserve the opaque-theme appearance of every glyph pixel,
+                // including antialiasing. Background opacity never enters this
+                // layer's colors or alpha, even along the edges of the letters.
+                var data=bitmap.LockBits(new Rectangle(Point.Empty,size),ImageLockMode.ReadWrite,PixelFormat.Format32bppPArgb);
+                try
+                {
+                    int stride=checked(size.Width*4); var row=new byte[stride];
+                    for(int y=0;y<size.Height;y++)
+                    {
+                        IntPtr address=IntPtr.Add(data.Scan0,y*data.Stride); Marshal.Copy(address,row,0,stride);
+                        for(int x=0;x<stride;x+=4)
+                        {
+                            int alpha=row[x+3];
+                            // Do not turn barely visible antialias coverage into
+                            // an opaque light fringe on a transparent backdrop.
+                            if(alpha<128) {row[x]=row[x+1]=row[x+2]=row[x+3]=0;continue;}
+                            int inverse=255-alpha;
+                            row[x]=(byte)Math.Min(255,row[x]+(theme.Surface.B*inverse+127)/255);
+                            row[x+1]=(byte)Math.Min(255,row[x+1]+(theme.Surface.G*inverse+127)/255);
+                            row[x+2]=(byte)Math.Min(255,row[x+2]+(theme.Surface.R*inverse+127)/255);
+                            row[x+3]=255;
+                        }
+                        Marshal.Copy(row,0,address,stride);
+                    }
+                }
+                finally {bitmap.UnlockBits(data);}
+                return bitmap;
+            }
+            catch {bitmap.Dispose();throw;}
+        }
+
         public static void Draw(Graphics g, Rectangle bounds, float scale, VisualTheme theme,
             UsagePresentation presentation, BadgeLayoutSettings layout)
         {
@@ -100,22 +145,12 @@ namespace PersonalUsageOverlay
             RectangleF clip = RectangleF.Intersect(canvas, bounds);
             if (clip.Width <= 0 || clip.Height <= 0)
                 return;
-            UsageTone tone = presentation == null ? UsageTone.Attention : presentation.Tone;
-            Color stateColor = tone == UsageTone.Low ? theme.Danger
-                : tone == UsageTone.Normal ? theme.Success : theme.Attention;
-            double? lowWeekly = presentation == null ? null : presentation.LowWeeklyRemaining;
-            if (lowWeekly.HasValue && (Double.IsNaN(lowWeekly.Value) || Double.IsInfinity(lowWeekly.Value)
-                || lowWeekly.Value < 0 || lowWeekly.Value > 100))
-                lowWeekly = null;
-
             GraphicsState saved = g.Save();
             try
             {
                 g.ResetTransform();
                 g.SetClip(clip, CombineMode.Intersect);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                HeadlinePlacement headline = CalculateHeadline(g, bounds, scale, presentation, normalized);
                 float inset = 0.7f * scale;
                 var surface = new RectangleF(canvas.Left + inset, canvas.Top + inset,
                     Math.Max(0f, canvas.Width - inset * 2f), Math.Max(0f, canvas.Height - inset * 2f));
@@ -128,7 +163,23 @@ namespace PersonalUsageOverlay
                     g.DrawPath(border, path);
                 }
 
-                foreach (BadgeElement element in normalized.Elements)
+                using(var text=CreateTextBitmap(new Size((int)Math.Round(physicalWidth),(int)Math.Round(physicalHeight)),scale,theme,presentation,normalized))
+                    g.DrawImageUnscaled(text,bounds.Location);
+            }
+            finally
+            {
+                g.Restore(saved);
+            }
+        }
+
+        private static void DrawText(Graphics g,Rectangle bounds,float scale,VisualTheme theme,UsagePresentation presentation,BadgeLayoutSettings normalized)
+        {
+            UsageTone tone=presentation==null?UsageTone.Attention:presentation.Tone;
+            Color stateColor=tone==UsageTone.Low?theme.Danger:tone==UsageTone.Normal?theme.Success:theme.Attention;
+            double? lowWeekly=presentation==null?null:presentation.LowWeeklyRemaining;
+            if(lowWeekly.HasValue && (Double.IsNaN(lowWeekly.Value)||Double.IsInfinity(lowWeekly.Value)||lowWeekly.Value<0||lowWeekly.Value>100)) lowWeekly=null;
+            HeadlinePlacement headline=CalculateHeadline(g,bounds,scale,presentation,normalized);
+            foreach (BadgeElement element in normalized.Elements)
                 {
                     if (!element.Visible)
                         continue;
@@ -175,11 +226,6 @@ namespace PersonalUsageOverlay
                         finally { g.Restore(textState); }
                     }
                 }
-            }
-            finally
-            {
-                g.Restore(saved);
-            }
         }
 
         private static string TextOr(string text, string fallback)

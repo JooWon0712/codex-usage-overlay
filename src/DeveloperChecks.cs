@@ -261,7 +261,15 @@ namespace PersonalUsageOverlay
                     {
                         var layout=new BadgeLayoutSettings {BackgroundTransparency=transparency};
                         using(var bitmap=BadgeRenderer.CreateBitmap(new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),scale,theme,samples[0].Value,layout))
+                        {
                             bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"transparency-"+transparency+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                            using(var composite=new Bitmap(bitmap.Width,bitmap.Height))
+                            {
+                                using(var graphics=Graphics.FromImage(composite))
+                                { graphics.Clear(Color.FromArgb(13,17,23)); graphics.DrawImageUnscaled(bitmap,Point.Empty); }
+                                composite.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"on-codex-transparency-"+transparency+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                            }
+                        }
                         if(transparency==50)
                         {
                             var previewHost=new SettingsPreviewHost(theme); previewHost.SetBadgeLayout(layout);
