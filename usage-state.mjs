@@ -1,15 +1,16 @@
 // State only: no file cache, credentials, network requests, or session-token estimates.
 export const STALE_AFTER_MS = 180000;
 
+const SAFE_REASONS = new Set([
+  'process_start_failed', 'process_exited', 'process_not_running',
+  'process_write_failed', 'process_read_failed', 'request_timeout',
+  'usage_unavailable', 'last_update_expired', 'account_changed',
+]);
+
 export function safeReason(error) {
   const value = typeof error === 'string' ? error : error?.message;
   if (/^rpc_error_-?\d+$/.test(value || '')) return value;
-  const allowed = new Set([
-    'process_start_failed', 'process_exited', 'process_not_running',
-    'process_write_failed', 'process_read_failed', 'request_timeout',
-    'usage_unavailable', 'last_update_expired', 'account_changed',
-  ]);
-  return allowed.has(value) ? value : 'query_failed';
+  return SAFE_REASONS.has(value) ? value : 'query_failed';
 }
 
 export class UsageState {

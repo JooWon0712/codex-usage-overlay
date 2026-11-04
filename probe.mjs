@@ -2,6 +2,18 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
+let koreaResetFormatter;
+
+function formatResetKorea(seconds) {
+  if (!Number.isFinite(seconds)) return null;
+  const reset = new Date(seconds * 1000);
+  if (!Number.isFinite(reset.getTime())) return null;
+  koreaResetFormatter ??= new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium',
+  });
+  return koreaResetFormatter.format(reset) + ' KST';
+}
+
 // Read-only methods only. Never starts a conversation or loads a model.
 export class UsageClient {
   constructor(executable = 'codex.exe') {
@@ -120,7 +132,6 @@ export function normalizeLimits(result, now = new Date()) {
       const window = bucket?.[name];
       if (!window || !Number.isFinite(window.usedPercent)) continue;
       const resetSeconds = window.resetsAt;
-      const reset = Number.isFinite(resetSeconds) ? new Date(resetSeconds * 1000) : null;
       windows.push({
         limitId: bucket.limitId ?? key,
         window: name,
@@ -128,10 +139,7 @@ export function normalizeLimits(result, now = new Date()) {
         remainingPercent: Math.max(0, Math.min(100, 100 - window.usedPercent)),
         windowDurationMins: Number.isFinite(window.windowDurationMins) ? window.windowDurationMins : null,
         resetsAt: Number.isFinite(resetSeconds) ? resetSeconds : null,
-        resetsAtKorea: reset && Number.isFinite(reset.getTime())
-          ? new Intl.DateTimeFormat('sv-SE', {
-            timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium',
-          }).format(reset) + ' KST' : null,
+        resetsAtKorea: formatResetKorea(resetSeconds),
       });
     }
   }
