@@ -81,9 +81,15 @@ namespace PersonalUsageOverlay
             Color border = Enabled && (selected || defaultButton || mouseInside || pressed) ? theme.Accent : theme.Border;
             if (Enabled && selected && Object.ReferenceEquals(theme, VisualTheme.Light) && !SystemInformation.HighContrast)
             {
-                // The selected neutral-ink tab is filled; dark/system themes retain their own treatment.
+                // Neutral ink keeps the selected tab visibly filled.
                 fill = border = Color.FromArgb(0x30, 0x38, 0x44);
                 text = Color.FromArgb(0xf2, 0xf4, 0xf7);
+            }
+            else if (Enabled && selected && Object.ReferenceEquals(theme, VisualTheme.Dark) && !SystemInformation.HighContrast)
+            {
+                fill = theme.Pressed;
+                border = theme.Accent;
+                text = theme.Text;
             }
             float stroke = Math.Min(Math.Max(1f, scale), Math.Min(ClientSize.Width, ClientSize.Height) / 2f);
             RectangleF bounds = new RectangleF(stroke / 2f, stroke / 2f,

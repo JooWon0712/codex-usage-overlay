@@ -20,8 +20,11 @@ namespace PersonalUsageOverlay
                 Success=foreground.Success, Attention=foreground.Attention,
                 Danger=foreground.Danger, DangerText=foreground.DangerText,
                 Bright=bright, UseOutline=highContrast || bright,
-                UseSoftShadow=bright && !theme.IsDark,
-                OutlineColor=bright ? VisualTheme.Dark.Surface : theme.Surface
+                UseSoftShadow=bright,
+                // Keep the two foreground treatments independent when either
+                // theme's body palette changes. High contrast uses its own surface.
+                OutlineColor=!bright ? theme.Surface : theme.IsDark
+                    ? Color.FromArgb(0x0d,0x11,0x17) : Color.FromArgb(0x19,0x1d,0x24)
             };
             if (bright && !theme.IsDark)
             {
@@ -33,10 +36,10 @@ namespace PersonalUsageOverlay
                 result.Danger=Color.FromArgb(0xff,0xac,0xb8);
                 result.DangerText=Color.FromArgb(0xff,0xc2,0xcd);
             }
-            if (!highContrast && !theme.IsDark)
+            if (!highContrast)
             {
-                // Neutral ink uses one secondary tone for ordinary information
-                // in both opacity profiles. Warning/failure colors keep their meaning.
+                // Both selected neutral themes use one secondary information tone.
+                // Warning/failure colors keep their meaning.
                 result.Success=result.Muted;
                 result.Accent=result.Muted;
             }

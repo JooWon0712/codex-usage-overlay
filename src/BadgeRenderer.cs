@@ -163,8 +163,8 @@ namespace PersonalUsageOverlay
                             else outline[target] = (byte)Math.Max(outline[target], (int)Math.Round(alpha * tap.Weight));
                         }
                     }
-                // Light bright text uses a small, blurred drop shadow rather
-                // than a heavy stroke. Dark/high contrast retain the outline.
+                // Both neutral themes use a small, blurred drop shadow for
+                // bright text. High contrast retains its system-colored outline.
                 // Keep the original font coverage; never threshold its edges.
                 for (int y = 0; y < bitmap.Height; y++)
                     for (int x = 0; x < bitmap.Width; x++)

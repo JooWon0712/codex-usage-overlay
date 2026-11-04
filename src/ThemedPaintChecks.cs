@@ -36,6 +36,8 @@ namespace PersonalUsageOverlay
                     checks[name + "selected_button_has_theme_fill_and_preserves_button_properties"] = SelectedButton(theme, scale);
                     if (!theme.IsDark)
                         checks[name + "selected_ink_tab_has_dark_fill_light_text_and_no_native_handle"] = SelectedInkTab(scale);
+                    else
+                        checks[name + "selected_charcoal_tab_has_pressed_fill_accent_border_and_theme_text"] = SelectedCharcoalTab(scale);
                     checks[name + "partial_paint_preserves_clipping_for_background_and_text"] = ClipIsPreserved(theme, scale, false)
                         && ClipIsPreserved(theme, scale, true);
                     checks[name + "translated_paint_keeps_text_inside_its_control"] = TranslationIsPreserved(theme, scale, false)
@@ -123,8 +125,10 @@ namespace PersonalUsageOverlay
                     button.Selected = true;
                     using (Bitmap selected = PaintOnly(button, scale, null, Point.Empty))
                     {
-                        Color expected = Object.ReferenceEquals(theme, VisualTheme.Light) && !SystemInformation.HighContrast
-                            ? Color.FromArgb(0x30, 0x38, 0x44) : theme.Hover;
+                        Color expected = theme.Hover;
+                        if (!SystemInformation.HighContrast)
+                            expected = Object.ReferenceEquals(theme, VisualTheme.Light)
+                                ? Color.FromArgb(0x30, 0x38, 0x44) : theme.Pressed;
                         bool fill = Same(normal.GetPixel(x, y), theme.Surface) && Same(selected.GetPixel(x, y), expected);
                         bool properties = button.Selected && button.Enabled && button.TabStop && !button.UseMnemonic
                             && button.DialogResult == DialogResult.Cancel;
@@ -157,6 +161,46 @@ namespace PersonalUsageOverlay
                             visibleText |= Same(bitmap.GetPixel(x, y), text);
                     return Same(bitmap.GetPixel(button.Width / 2, button.Height - (int)Math.Ceiling(5 * scale)), fill)
                         && visibleText && BadgeTextColors.Contrast(text, fill) >= 4.5
+                        && !button.IsHandleCreated && !parent.IsHandleCreated;
+                }
+            }
+        }
+
+        private static bool SelectedCharcoalTab(float scale)
+        {
+            VisualTheme theme = VisualTheme.Dark;
+            using (var font = FontFor(scale))
+            using (var parent = new Panel { BackColor = ParentBackground, Visible = false })
+            using (var button = new ThemedButton
+            {
+                Theme = theme, ScaleFactor = scale, Size = SizeFor(180, 32, scale),
+                Font = font, Text = "오버레이", Selected = true,
+                DialogResult = DialogResult.Cancel, TabStop = true, UseMnemonic = false
+            })
+            {
+                parent.Controls.Add(button);
+                using (Bitmap bitmap = PaintOnly(button, scale, null, Point.Empty))
+                {
+                    Color fill = SystemInformation.HighContrast ? theme.Hover : theme.Pressed;
+                    bool visibleText = false, visibleBorder = false;
+                    int edge = Math.Max(1, (int)Math.Ceiling(3 * scale));
+                    for (int y = 0; y < button.Height; y++)
+                        for (int x = 0; x < button.Width; x++)
+                        {
+                            Color pixel = bitmap.GetPixel(x, y);
+                            visibleText |= Same(pixel, theme.Text);
+                            // A one-pixel antialiased stroke need not contain a
+                            // fully covered Accent pixel. Check its actual blend
+                            // only in the edge band, away from the label.
+                            if (!visibleBorder && (x < edge || y < edge || x >= button.Width - edge || y >= button.Height - edge))
+                                visibleBorder = Same(pixel, theme.Accent)
+                                    || IsBorderBlend(pixel, theme.Accent, fill)
+                                    || IsBorderBlend(pixel, theme.Accent, ParentBackground);
+                        }
+                    return Same(bitmap.GetPixel(button.Width / 2, button.Height - (int)Math.Ceiling(5 * scale)), fill)
+                        && visibleText && visibleBorder && BadgeTextColors.Contrast(theme.Text, fill) >= 4.5
+                        && button.Selected && button.Enabled && button.TabStop && !button.UseMnemonic
+                        && button.DialogResult == DialogResult.Cancel
                         && !button.IsHandleCreated && !parent.IsHandleCreated;
                 }
             }
@@ -282,6 +326,21 @@ namespace PersonalUsageOverlay
         private static bool Same(Color first, Color second)
         {
             return first.R == second.R && first.G == second.G && first.B == second.B;
+        }
+
+        private static bool IsBorderBlend(Color pixel, Color foreground, Color background)
+        {
+            if (pixel.A != 255) return false;
+            // Require at least a quarter coverage so plain fill/background
+            // cannot satisfy the border check through rounding tolerance.
+            for (int alpha = 64; alpha <= 255; alpha++)
+            {
+                int inverse = 255 - alpha;
+                if (Math.Abs(pixel.R - (foreground.R * alpha + background.R * inverse + 127) / 255) <= 2
+                    && Math.Abs(pixel.G - (foreground.G * alpha + background.G * inverse + 127) / 255) <= 2
+                    && Math.Abs(pixel.B - (foreground.B * alpha + background.B * inverse + 127) / 255) <= 2) return true;
+            }
+            return false;
         }
 
         private static bool Style(Control control, ControlStyles style)

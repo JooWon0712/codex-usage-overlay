@@ -13,10 +13,10 @@ namespace PersonalUsageOverlay
                 0xCFD3D8, 0xDBDEE2, 0xA7AFB9, 0x20262E, 0x444F5D, 0xC4CAD2,
                 0xBAC2CD, 0x3F4C5C, 0x444F5D, 0x79510C, 0xA62B41, 0x92263A
             });
-            checks["dark_palette_is_preserved_when_light_design_changes"] = PaletteMatches(VisualTheme.Dark, new[]
+            checks["dark_palette_matches_selected_neutral_charcoal_design"] = PaletteMatches(VisualTheme.Dark, new[]
             {
-                0x101318, 0x191D24, 0x30353E, 0xE6E8EB, 0x9DA4AE, 0x252B34,
-                0x303843, 0xB4BDCA, 0x91C9B6, 0xE8B979, 0xED7482, 0xFFB3BF
+                0x171B22, 0x242A34, 0x414B59, 0xE7EBF0, 0xB5BEC9, 0x2E3744,
+                0x354150, 0xA8B7CC, 0xB5BEC9, 0xFFE0A3, 0xFFACB8, 0xFFC2CD
             });
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
             {

@@ -46,14 +46,21 @@ namespace PersonalUsageOverlay
             bool dark = true, light = true, original = true, contrast = true, floor = true, high = true, neutral = true, shadowPolicy = true;
             Color[] source = Palette(VisualTheme.Light);
             source[2] = source[3] = VisualTheme.Light.Muted;
+            Color[] darkSource = Palette(VisualTheme.Dark);
+            darkSource[2] = darkSource[3] = VisualTheme.Dark.Muted;
+            Color[] lightBright = { Color.FromArgb(0xf8,0xfa,0xfc), Color.FromArgb(0xe2,0xe8,0xf0),
+                Color.FromArgb(0xe2,0xe8,0xf0), Color.FromArgb(0xe2,0xe8,0xf0), Color.FromArgb(0xff,0xe0,0xa3),
+                Color.FromArgb(0xff,0xac,0xb8), Color.FromArgb(0xff,0xc2,0xcd) };
             foreach (int percent in PercentSteps)
             {
                 BadgeTextColors darkColors = BadgeTextColors.Resolve(VisualTheme.Dark, percent, false);
-                dark &= SamePalette(Palette(darkColors), Palette(VisualTheme.Dark)) && darkColors.Bright
-                    && darkColors.UseOutline && !darkColors.UseSoftShadow && darkColors.OutlineColor == VisualTheme.Dark.Surface;
+                dark &= SamePalette(Palette(darkColors), darkSource) && darkColors.Bright
+                    && darkColors.UseOutline && darkColors.UseSoftShadow
+                    && darkColors.OutlineColor == Color.FromArgb(0x0d,0x11,0x17);
                 BadgeTextColors colors = BadgeTextColors.Resolve(VisualTheme.Light, percent, false);
-                neutral &= colors.Success == colors.Muted && colors.Accent == colors.Muted;
-                shadowPolicy &= colors.UseSoftShadow == (percent >= 50);
+                neutral &= colors.Success == colors.Muted && colors.Accent == colors.Muted
+                    && darkColors.Success == darkColors.Muted && darkColors.Accent == darkColors.Muted;
+                shadowPolicy &= colors.UseSoftShadow == (percent >= 50) && darkColors.UseSoftShadow;
                 if (percent < 50)
                 {
                     light &= !colors.Bright && !colors.UseOutline && !colors.UseSoftShadow;
@@ -74,8 +81,9 @@ namespace PersonalUsageOverlay
                 }
                 else
                 {
-                    light &= colors.Bright && colors.UseOutline && colors.UseSoftShadow && colors.OutlineColor == VisualTheme.Dark.Surface
-                        && SamePalette(Palette(colors), Palette(BadgeTextColors.Resolve(VisualTheme.Light,50,false)))
+                    light &= colors.Bright && colors.UseOutline && colors.UseSoftShadow
+                        && colors.OutlineColor == Color.FromArgb(0x19,0x1d,0x24)
+                        && SamePalette(Palette(colors), lightBright)
                         && colors.Muted.R >= 220 && colors.Accent == colors.Muted && colors.Success == colors.Muted
                         && colors.Attention.R > colors.Attention.B && colors.DangerText.R > colors.DangerText.G;
                     foreach (Color foreground in Palette(colors))
@@ -91,10 +99,10 @@ namespace PersonalUsageOverlay
             }
             BadgeTextColors forty = BadgeTextColors.Resolve(VisualTheme.Light, 40, false);
             BadgeTextColors fifty = BadgeTextColors.Resolve(VisualTheme.Light, 50, false);
-            checks["badge_foreground_dark_palette_and_outline_are_invariant_at_all_steps"] = dark;
+            checks["badge_foreground_selected_charcoal_profile_and_soft_shadow_are_invariant_at_all_steps"] = dark;
             checks["badge_foreground_light_uses_dark_text_below_fifty_and_bright_text_from_fifty"] = light;
-            checks["badge_foreground_light_normal_update_date_and_countdown_share_neutral_secondary_tone"] = neutral;
-            checks["badge_foreground_soft_shadow_is_only_for_light_bright_profile"] = shadowPolicy;
+            checks["badge_foreground_both_neutral_themes_share_secondary_tone_for_normal_information"] = neutral;
+            checks["badge_foreground_soft_shadow_is_for_dark_all_steps_and_light_bright_profile"] = shadowPolicy;
             checks["badge_foreground_light_preserves_sufficient_original_colors_and_only_darkens_others"] = original;
             checks["badge_foreground_light_dark_candidates_have_4_5_contrast_against_black_backdrop_floor"] = contrast;
             checks["badge_foreground_floor_is_actual_paper_gray_alpha_over_black"] = floor;
@@ -103,7 +111,7 @@ namespace PersonalUsageOverlay
                 && VisualTheme.Light.Surface.ToArgb() == Color.FromArgb(0xdb, 0xde, 0xe2).ToArgb();
             checks["badge_foreground_high_contrast_keeps_system_palette_before_opacity_policy"] = high;
             checks["badge_foreground_null_and_invalid_percent_resolve_to_clamped_profiles"] =
-                SamePalette(Palette(BadgeTextColors.Resolve(null, 0, false)), Palette(VisualTheme.Dark))
+                SamePalette(Palette(BadgeTextColors.Resolve(null, 0, false)), darkSource)
                 && SamePalette(Palette(BadgeTextColors.Resolve(VisualTheme.Light, Int32.MinValue, false)),
                     Palette(BadgeTextColors.Resolve(VisualTheme.Light, 0, false)))
                 && SamePalette(Palette(BadgeTextColors.Resolve(VisualTheme.Light, Int32.MaxValue, false)),
@@ -205,12 +213,23 @@ namespace PersonalUsageOverlay
             checks["badge_transparency_full_bitmap_uses_source_over_for_every_glyph_and_outline_pixel"] = composited;
             checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
             checks["badge_transparency_all_glyphs_composite_correctly_on_black_white_and_colored_backdrops"] = backdrops;
-            checks["badge_transparency_dark_glyph_and_outline_rgba_are_unchanged_by_opacity"] = darkInvariant;
+            checks["badge_transparency_dark_glyph_and_soft_shadow_rgba_are_unchanged_by_opacity"] = darkInvariant;
             checks["badge_transparency_all_eleven_steps_cover_528_state_size_theme_combinations"] = combinations == 528;
         }
 
         private static void CheckSoftShadow(Dictionary<string, bool> checks, DateTimeOffset started,
             TimeZoneInfo zone, bool highContrast)
+        {
+            CheckSoftShadow(checks, started, zone, highContrast, VisualTheme.Light);
+            CheckSoftShadow(checks, started, zone, highContrast, VisualTheme.Dark);
+            checks["badge_light_soft_shadow_offset_is_one_physical_pixel_at_common_dpi_and_scales_above_it"] =
+                BadgeRenderer.ShadowOffsetY(1f) == 1 && BadgeRenderer.ShadowOffsetY(1.5f) == 1
+                && BadgeRenderer.ShadowOffsetY(2f) == 1 && BadgeRenderer.ShadowOffsetY(3f) == 2
+                && BadgeRenderer.ShadowOffsetY(4f) == 2;
+        }
+
+        private static void CheckSoftShadow(Dictionary<string, bool> checks, DateTimeOffset started,
+            TimeZoneInfo zone, bool highContrast, VisualTheme theme)
         {
             bool mask = true, partial = true, centers = true;
             foreach (float scale in new[] { 1f, 1.5f, 2f })
@@ -221,8 +240,8 @@ namespace PersonalUsageOverlay
                 layout.Normalize();
                 var size = new Size((int)Math.Round(layout.Width * scale), (int)Math.Round(layout.Height * scale));
                 UsagePresentation presentation = UsagePresentation.CreatePreview(started, zone);
-                using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, VisualTheme.Light, presentation, layout))
-                using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, VisualTheme.Light, presentation, layout))
+                using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, theme, presentation, layout))
+                using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, layout))
                 {
                     RawBitmap glyph = ReadPixels(glyphBitmap), text = ReadPixels(textBitmap);
                     double radius = Math.Max(1d, scale);
@@ -264,12 +283,9 @@ namespace PersonalUsageOverlay
                     partial &= partialPixels > 0;
                 }
             }
-            checks["badge_light_soft_shadow_matches_weighted_average_alpha_and_downward_offset"] = mask;
-            checks["badge_light_soft_shadow_is_partial_at_empty_glyph_pixels_and_keeps_opaque_centers"] = partial && centers;
-            checks["badge_light_soft_shadow_offset_is_one_physical_pixel_at_common_dpi_and_scales_above_it"] =
-                BadgeRenderer.ShadowOffsetY(1f) == 1 && BadgeRenderer.ShadowOffsetY(1.5f) == 1
-                && BadgeRenderer.ShadowOffsetY(2f) == 1 && BadgeRenderer.ShadowOffsetY(3f) == 2
-                && BadgeRenderer.ShadowOffsetY(4f) == 2;
+            string prefix = theme.IsDark ? "badge_dark_" : "badge_light_";
+            checks[prefix + "soft_shadow_matches_weighted_average_alpha_and_downward_offset"] = mask;
+            checks[prefix + "soft_shadow_is_partial_at_empty_glyph_pixels_and_keeps_opaque_centers"] = partial && centers;
         }
 
         private static bool OpaqueCentersMatch(Bitmap bitmap, RawBitmap glyph, RawBitmap text, float scale,
