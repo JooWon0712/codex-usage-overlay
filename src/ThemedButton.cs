@@ -12,6 +12,7 @@ namespace PersonalUsageOverlay
         private bool mousePressed;
         private bool keyboardPressed;
         private bool defaultButton;
+        private bool selected;
         public float ScaleFactor;
 
         public ThemedButton()
@@ -38,6 +39,17 @@ namespace PersonalUsageOverlay
             }
         }
 
+        public bool Selected
+        {
+            get { return selected; }
+            set
+            {
+                if (selected == value) return;
+                selected = value;
+                Invalidate();
+            }
+        }
+
         public override void NotifyDefault(bool value)
         {
             defaultButton = value;
@@ -53,6 +65,10 @@ namespace PersonalUsageOverlay
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            // ButtonBase is opaque on the target framework, so the paint path
+            // cannot depend on OnPaintBackground running before this method.
+            using (var background = new SolidBrush(Parent == null ? theme.Background : Parent.BackColor))
+                e.Graphics.FillRectangle(background, ClientRectangle);
             if (ClientSize.Width <= 1 || ClientSize.Height <= 1)
             {
                 return;
@@ -60,9 +76,9 @@ namespace PersonalUsageOverlay
 
             float scale = ScaleFactor > 0 ? ScaleFactor : Math.Max(1f, e.Graphics.DpiX / 96f);
             bool pressed = Enabled && (keyboardPressed || (mousePressed && mouseInside));
-            Color fill = !Enabled ? theme.Surface : pressed ? theme.Pressed : mouseInside ? theme.Hover : theme.Surface;
+            Color fill = !Enabled ? theme.Surface : pressed ? theme.Pressed : mouseInside || selected ? theme.Hover : theme.Surface;
             Color text = Enabled ? theme.Text : theme.Muted;
-            Color border = Enabled && (defaultButton || mouseInside || pressed) ? theme.Accent : theme.Border;
+            Color border = Enabled && (selected || defaultButton || mouseInside || pressed) ? theme.Accent : theme.Border;
             float stroke = Math.Min(Math.Max(1f, scale), Math.Min(ClientSize.Width, ClientSize.Height) / 2f);
             RectangleF bounds = new RectangleF(stroke / 2f, stroke / 2f,
                 Math.Max(0f, ClientSize.Width - stroke), Math.Max(0f, ClientSize.Height - stroke));

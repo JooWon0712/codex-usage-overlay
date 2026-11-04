@@ -18,13 +18,16 @@ namespace PersonalUsageOverlay
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            using (var fill = new SolidBrush(Parent == null ? Theme.Background : Parent.BackColor))
+            using (var fill = new SolidBrush(Parent == null ? (Theme ?? VisualTheme.Dark).Background : Parent.BackColor))
                 e.Graphics.FillRectangle(fill, ClientRectangle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var theme = Theme ?? VisualTheme.Dark;
+            // Opaque ButtonBase controls may skip OnPaintBackground entirely.
+            using (var background = new SolidBrush(Parent == null ? theme.Background : Parent.BackColor))
+                e.Graphics.FillRectangle(background, ClientRectangle);
             float scale = ScaleFactor, side = 14 * scale;
             var box = new RectangleF(1 * scale, (Height - side) / 2, side, side);
             Color text = Enabled ? theme.Text : theme.Muted;

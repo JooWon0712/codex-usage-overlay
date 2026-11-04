@@ -9,8 +9,10 @@ namespace PersonalUsageOverlay
     {
         private readonly ISettingsHost app;
         private readonly List<Control> uiControls = new List<Control>();
-        private readonly TabControl tabs = new TabControl();
-        private readonly TabPage overlayPage = new TabPage("오버레이"), positionPage = new TabPage("표시 위치 · 테마"), dataPage = new TabPage("조회 상세");
+        private readonly Panel pageHost = new Panel();
+        private readonly Panel overlayPage = new Panel(), positionPage = new Panel(), dataPage = new Panel();
+        private readonly ThemedButton[] pageButtons = new ThemedButton[3];
+        private Panel[] pages;
         private readonly BadgePreview preview = new BadgePreview();
         private readonly ThemedCheckBox indicatorChoice = new ThemedCheckBox(), resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox();
         private readonly ComboBox positionChoice = new ComboBox(), themeChoice = new ComboBox();
@@ -37,13 +39,18 @@ namespace PersonalUsageOverlay
             DoubleBuffered = true;
             AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
             AddLabel(this, "추가 항목을 켜고 끄면서 오버레이 미리보기를 확인하세요.", 22, 56, 556, 24, 12, false);
-            tabs.SetBounds(20, 96, 560, 414);
-            tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            tabs.SizeMode = TabSizeMode.Fixed;
-            tabs.TabPages.AddRange(new[] { overlayPage, positionPage, dataPage });
-            tabs.DrawItem += DrawTab;
-            AddUi(this, tabs);
-            uiControls.Add(overlayPage); uiControls.Add(positionPage); uiControls.Add(dataPage);
+            pageHost.SetBounds(20, 130, 560, 380); AddUi(this, pageHost);
+            pages = new[] { overlayPage, positionPage, dataPage };
+            string[] pageNames = { "오버레이", "표시 위치 · 테마", "조회 상세" };
+            for (int index = 0; index < pages.Length; index++)
+            {
+                pages[index].Dock = DockStyle.Fill; AddUi(pageHost, pages[index]);
+                int selected = index;
+                var button = new ThemedButton { Text = pageNames[index], AccessibleName = pageNames[index] };
+                button.SetBounds(20 + index * 188, 96, 182, 30);
+                button.Click += delegate { SelectPage(selected); };
+                pageButtons[index] = button; AddUi(this, button);
+            }
 
             AddLabel(overlayPage, "오버레이 미리보기", 16, 12, 520, 22, 12, true);
             preview.SetBounds(16, 42, 520, 140); AddUi(overlayPage, preview);
@@ -86,14 +93,13 @@ namespace PersonalUsageOverlay
             preview.UiScale = uiScale;
             foreach (var check in new[] { indicatorChoice, resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
             foreach (var choice in new[] { positionChoice, themeChoice }) choice.ItemHeight = (int)Math.Round(25 * uiScale);
-            tabs.ItemSize = new Size((int)Math.Round(182 * uiScale), (int)Math.Round(30 * uiScale));
             if (!previewMode)
             {
                 var fullSize = ClientSize; var work = Screen.FromHandle(Handle).WorkingArea;
                 AutoScrollMinSize = fullSize; AutoScroll = true;
                 ClientSize = new Size(Math.Min(fullSize.Width, Math.Max(320, work.Width - 48)), Math.Min(fullSize.Height, Math.Max(360, work.Height - (int)(64 * uiScale))));
             }
-            LoadPreferences(); UpdateUsage(); ApplyTheme(app.Theme);
+            SelectPage(0); LoadPreferences(); UpdateUsage(); ApplyTheme(app.Theme);
         }
 
         private void AddUi(Control parent, Control control) { parent.Controls.Add(control); uiControls.Add(control); }
@@ -104,7 +110,7 @@ namespace PersonalUsageOverlay
             foreach (var control in uiControls) snapshots.Add(Tuple.Create(control, control.Bounds, control.Font));
             foreach (var item in snapshots)
             {
-                if (!(item.Item1 is TabPage)) item.Item1.SetBounds((int)Math.Round(item.Item2.X * scale), (int)Math.Round(item.Item2.Y * scale), (int)Math.Round(item.Item2.Width * scale), (int)Math.Round(item.Item2.Height * scale));
+                if (item.Item1.Dock != DockStyle.Fill) item.Item1.SetBounds((int)Math.Round(item.Item2.X * scale), (int)Math.Round(item.Item2.Y * scale), (int)Math.Round(item.Item2.Width * scale), (int)Math.Round(item.Item2.Height * scale));
                 item.Item1.Font = new Font(item.Item3.FontFamily, item.Item3.Size * scale, item.Item3.Style, GraphicsUnit.Pixel);
                 var button = item.Item1 as ThemedButton; if (button != null) button.ScaleFactor = scale;
             }
@@ -168,7 +174,17 @@ namespace PersonalUsageOverlay
             UpdatePositionStatus();
         }
         public void UpdatePositionStatus() { positionStatus.Text = app.PositionStatus; UpdateTheme(); }
-        internal void SelectPreviewPage(int index) { if (previewMode && index >= 0 && index < tabs.TabPages.Count) tabs.SelectedIndex = index; }
+        private void SelectPage(int index)
+        {
+            if (index < 0 || index >= pages.Length) return;
+            for (int current = 0; current < pages.Length; current++)
+            {
+                pages[current].Visible = current == index;
+                pageButtons[current].Selected = current == index;
+            }
+            pages[index].BringToFront();
+        }
+        internal void SelectPreviewPage(int index) { if (previewMode) SelectPage(index); }
         public void UpdateTheme()
         { if (!ReferenceEquals(theme, app.Theme)) ApplyTheme(app.Theme); themeStatus.Text = app.ThemeStatus; }
         private void ApplyTheme(VisualTheme value)
@@ -179,7 +195,6 @@ namespace PersonalUsageOverlay
                 control.ForeColor = theme.Text; control.BackColor = control is Label ? Color.Transparent : theme.Background;
                 var button = control as ThemedButton; if (button != null) button.Theme = theme;
                 var check = control as ThemedCheckBox; if (check != null) check.Theme = theme;
-                var page = control as TabPage; if (page != null) page.UseVisualStyleBackColor = false;
                 if (control is NumericUpDown || control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
             previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = theme.Muted;
@@ -194,15 +209,6 @@ namespace PersonalUsageOverlay
             using (var brush = new SolidBrush(fill)) e.Graphics.FillRectangle(brush, e.Bounds);
             var bounds = e.Bounds; bounds.Inflate(-(int)(8 * uiScale), 0);
             TextRenderer.DrawText(e.Graphics, choice.Items[e.Index].ToString(), choice.Font, bounds, text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform); e.DrawFocusRectangle();
-        }
-        private void DrawTab(object sender, DrawItemEventArgs e)
-        {
-            if (e.Index < 0 || e.Index >= tabs.TabPages.Count) return;
-            bool selected = tabs.SelectedIndex == e.Index;
-            using (var fill = new SolidBrush(selected ? theme.Surface : theme.Background)) e.Graphics.FillRectangle(fill, e.Bounds);
-            TextRenderer.DrawText(e.Graphics, tabs.TabPages[e.Index].Text, tabs.Font, e.Bounds, selected ? theme.Text : theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform);
-            if (selected) using (var edge = new Pen(theme.Accent, Math.Max(1, 2 * uiScale))) e.Graphics.DrawLine(edge, e.Bounds.Left + 6, e.Bounds.Bottom - 2, e.Bounds.Right - 6, e.Bounds.Bottom - 2);
-            e.DrawFocusRectangle();
         }
         protected override bool ShowWithoutActivation { get { return previewMode || base.ShowWithoutActivation; } }
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyCaptionTheme(); }

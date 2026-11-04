@@ -36,7 +36,6 @@ namespace PersonalUsageOverlay
         {
             base.OnPaint(e);
             using (var fill = new SolidBrush(theme.Background)) e.Graphics.FillRectangle(fill, ClientRectangle);
-            using (var edge = new Pen(theme.Border)) e.Graphics.DrawRectangle(edge, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
             float margin = 16 * UiScale;
             float scale = Math.Min(UiScale, Math.Min((Width - 2 * margin) / layout.Width, (Height - 2 * margin) / layout.Height));
             if (scale <= 0) return;

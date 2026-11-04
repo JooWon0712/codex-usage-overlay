@@ -47,8 +47,9 @@ namespace PersonalUsageOverlay
                 indicator.Checked = true;
                 checks["settings_binding_indicator_on_updates_preview_and_saved_choice"] = OptionsMatch(preview, host, true, true, true);
                 reset.Checked = false;
-                checks["settings_binding_reset_date_off_keeps_countdown_and_full_height"] = OptionsMatch(preview, host, true, false, true)
-                    && preview.LayoutSettings.Height == 82 && host.Prefs.BadgeLayout.Height == 82;
+                checks["settings_binding_reset_date_off_keeps_inline_countdown_at_compact_height"] = OptionsMatch(preview, host, true, false, true)
+                    && preview.LayoutSettings.Height == 58 && host.Prefs.BadgeLayout.Height == 58
+                    && Find(preview.LayoutSettings, "countdown").Y == 6;
                 reset.Checked = true;
                 checks["settings_binding_reset_date_on_updates_preview_and_saved_choice"] = OptionsMatch(preview, host, true, true, true);
                 countdown.Checked = false;
@@ -67,8 +68,8 @@ namespace PersonalUsageOverlay
                     && preview.LayoutSettings.Height == 82;
                 reset.Checked = false;
                 countdown.Checked = true;
-                checks["settings_binding_countdown_alone_restores_full_height"] = OptionsMatch(preview, host, true, false, true)
-                    && preview.LayoutSettings.Height == 82;
+                checks["settings_binding_countdown_alone_keeps_compact_height"] = OptionsMatch(preview, host, true, false, true)
+                    && preview.LayoutSettings.Height == 58 && host.Prefs.BadgeLayout.Height == 58;
                 Find(preview.LayoutSettings, "remaining").Visible = false;
                 Find(preview.LayoutSettings, "updated").Visible = false;
                 indicator.Checked = false;
@@ -120,7 +121,7 @@ namespace PersonalUsageOverlay
             BadgeElement reset = Find(prefs.BadgeLayout, "weekly-reset");
             reset.X = 18; reset.Y = 104; reset.Width = 300; reset.FontSize = 12.5f;
             BadgeElement countdown = Find(prefs.BadgeLayout, "countdown");
-            countdown.Visible = false;
+            countdown.X = 232; countdown.Y = 53; countdown.Width = 78; countdown.Visible = false;
             BadgeElement indicator = Find(prefs.BadgeLayout, "indicator");
             indicator.X = 8; indicator.Y = 12; indicator.Visible = false;
             prefs.BadgeLayout.Elements = new List<BadgeElement> { reset, indicator, countdown, updated, remaining };
@@ -136,6 +137,10 @@ namespace PersonalUsageOverlay
                 && fixedUpdated.X == 10 && fixedUpdated.Y == 31 && fixedUpdated.Width == 300 && fixedUpdated.FontSize == 11f && !fixedUpdated.Bold;
             checks["settings_json_only_optional_visibility_migrates_and_required_fields_stay_visible"] = !Find(restored.BadgeLayout, "indicator").Visible
                 && Find(restored.BadgeLayout, "weekly-reset").Visible && !Find(restored.BadgeLayout, "countdown").Visible && RequiredVisible(restored.BadgeLayout);
+            checks["settings_json_prior_bottom_row_countdown_uses_inline_reserved_column"] = Find(restored.BadgeLayout, "countdown").X == 232
+                && Find(restored.BadgeLayout, "countdown").Y == 6 && Find(restored.BadgeLayout, "countdown").Width == 78
+                && BadgeLayoutSettings.ElementHeight(Find(restored.BadgeLayout, "countdown")) == 25
+                && Find(restored.BadgeLayout, "weekly-reset").Width == 300;
             checks["settings_json_old_z_order_migrates_to_fixed_order"] = restored.BadgeLayout.Elements.Count == 5
                 && restored.BadgeLayout.Elements[0].Key == "indicator" && restored.BadgeLayout.Elements[1].Key == "remaining"
                 && restored.BadgeLayout.Elements[2].Key == "updated" && restored.BadgeLayout.Elements[3].Key == "weekly-reset"

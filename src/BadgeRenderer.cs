@@ -7,6 +7,41 @@ namespace PersonalUsageOverlay
 {
     internal static class BadgeRenderer
     {
+        internal sealed class HeadlinePlacement
+        {
+            public Rectangle Main, Countdown;
+        }
+
+        internal static HeadlinePlacement CalculateHeadline(Graphics graphics, Rectangle bounds, float scale, UsagePresentation presentation, BadgeLayoutSettings layout)
+        {
+            var normalized = layout.Copy();
+            normalized.Normalize();
+            var main = normalized.Elements.Find(item => item.Key == "remaining");
+            var countdown = normalized.Elements.Find(item => item.Key == "countdown");
+            int left = bounds.Left + (int)Math.Round(main.X * scale);
+            int top = bounds.Top + (int)Math.Round(main.Y * scale);
+            int height = (int)Math.Round(BadgeLayoutSettings.ElementHeight(main) * scale);
+            int right = bounds.Left + (int)Math.Round((normalized.Width - 10) * scale);
+            var result = new HeadlinePlacement { Main = new Rectangle(left, top, Math.Max(1, right - left), height) };
+            if (!countdown.Visible) return result;
+            const TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
+            using (var mainFont = new Font("Segoe UI", main.FontSize * scale, main.Bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel))
+            using (var countdownFont = new Font("Segoe UI", countdown.FontSize * scale, countdown.Bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel))
+            {
+                string mainText = TextOr(presentation == null ? null : presentation.MainText, "한도 확인 중");
+                string countdownText = TextOr(presentation == null ? null : presentation.CountdownText, "확인 불가");
+                int gap = Math.Max(1, (int)Math.Round(8 * scale));
+                int countdownWidth = Math.Min((int)Math.Round(countdown.Width * scale), TextRenderer.MeasureText(graphics, countdownText, countdownFont, new Size(Int32.MaxValue, Int32.MaxValue), flags).Width + (int)Math.Ceiling(2 * scale));
+                countdownWidth = Math.Max(1, Math.Min(countdownWidth, right - left - gap - 1));
+                int available = Math.Max(1, right - left - gap - countdownWidth);
+                int measured = TextRenderer.MeasureText(graphics, mainText, mainFont, new Size(Int32.MaxValue, Int32.MaxValue), flags).Width;
+                int mainWidth = Math.Max(1, Math.Min(available, measured));
+                result.Main = new Rectangle(left, top, mainWidth, height);
+                result.Countdown = new Rectangle(left + mainWidth + gap, top, countdownWidth, height);
+            }
+            return result;
+        }
+
         public static RectangleF ElementBounds(BadgeElement element)
         {
             if (element == null)
@@ -50,6 +85,7 @@ namespace PersonalUsageOverlay
                 g.ResetTransform();
                 g.SetClip(clip, CombineMode.Intersect);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                HeadlinePlacement headline = CalculateHeadline(g, bounds, scale, presentation, normalized);
                 float inset = 0.7f * scale;
                 var surface = new RectangleF(canvas.Left + inset, canvas.Top + inset,
                     Math.Max(0f, canvas.Width - inset * 2f), Math.Max(0f, canvas.Height - inset * 2f));
@@ -68,6 +104,8 @@ namespace PersonalUsageOverlay
                     RectangleF logical = ElementBounds(element);
                     var physical = new RectangleF(bounds.Left + logical.Left * scale,
                         bounds.Top + logical.Top * scale, logical.Width * scale, logical.Height * scale);
+                    if (element.Key == "remaining") physical = headline.Main;
+                    else if (element.Key == "countdown") physical = headline.Countdown;
                     if (element.Key == "indicator")
                     {
                         DrawIndicator(g, physical, scale, theme, stateColor, lowWeekly);
@@ -94,8 +132,6 @@ namespace PersonalUsageOverlay
                     else if (element.Key == "countdown")
                     {
                         text = TextOr(presentation == null ? null : presentation.CountdownText, "확인 불가");
-                        if (!normalized.Elements.Exists(item => item.Key == "weekly-reset" && item.Visible))
-                            text = "초기화 · " + text;
                         color = lowWeekly.HasValue ? theme.DangerText : theme.Accent;
                     }
                     else
