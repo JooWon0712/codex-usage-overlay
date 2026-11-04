@@ -145,28 +145,38 @@ namespace PersonalUsageOverlay
             var client = new Rectangle(59,104,2944,1877);
             var anchor = new TitleAnchorObservation { Status="ok",TitleBounds=new Rectangle(585,195,199,28),HeaderBounds=new Rectangle(507,170,2491,78) };
             checks["unavailable_title_never_falls_back_over_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences).IsEmpty;
-            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(585,257,480,123);
-            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(585,254,320,82);
-            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(585,260,640,164);
+            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(540,257,480,123);
+            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(555,254,320,82);
+            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(525,260,640,164);
+            checks["title_leading_inset_preserves_zero_stored_offset_without_migration"] = preferences.TitleOffsetX == 0
+                && preferences.TitleGap == 6 && Preferences.DefaultTitleOffsetX == 0;
             preferences.TitleOffsetX=12; preferences.TitleGap=10;
-            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(603,263,480,123);
+            string stored = new JavaScriptSerializer().Serialize(preferences);
+            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(558,263,480,123);
+            checks["title_manual_offset_is_additional_to_new_baseline_without_mutating_preferences"] = stored == new JavaScriptSerializer().Serialize(preferences)
+                && OverlayLayout.CalculateBounds(client,1.25f,preferences,anchor).Left == 563;
             preferences.ResetCurrentPosition();
+            anchor.TitleBounds=new Rectangle(517,195,40,28);
+            checks["default_title_leading_inset_stops_at_content_header"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 507;
             anchor.TitleBounds=new Rectangle(2900,195,80,28);
             checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2518,257,480,123);
             anchor.TitleBounds=new Rectangle(585,195,199,28); preferences.TitleOffsetX=-4000;
             checks["negative_offset_cannot_enter_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 507;
             preferences.ResetCurrentPosition();
             anchor.HeaderBounds=new Rectangle(107,170,2891,78); anchor.TitleBounds=new Rectangle(185,195,199,28);
-            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(185,257,480,123);
+            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(140,257,480,123);
             anchor.HeaderBounds=new Rectangle(-2112,-134,1547,78); anchor.TitleBounds=new Rectangle(-2034,-109,199,28);
-            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2034,-47,480,123);
+            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2079,-47,480,123);
             anchor.HeaderBounds=new Rectangle(507,170,70,78); anchor.TitleBounds=new Rectangle(517,195,40,28);
             checks["insufficient_content_width_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.HeaderBounds=new Rectangle(507,170,2491,78); anchor.TitleBounds=new Rectangle(585,195,199,28);
             checks["insufficient_space_below_header_hides_badge"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,150),1.5f,preferences,anchor).IsEmpty;
             checks["partial_height_does_not_cut_reset_or_countdown"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,250),1.5f,preferences,anchor).IsEmpty;
             var large = new Preferences { BadgeLayout = new BadgeLayoutSettings { Width=600,Height=300 } };
-            checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(585,257,480,123);
+            checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(540,257,480,123);
+            checks["extreme_unnormalized_title_offsets_clamp_without_integer_wraparound"] = OverlayLayout.CalculateBounds(client,1.5f,
+                new Preferences { TitleOffsetX=int.MinValue },anchor).Left == 507
+                && OverlayLayout.CalculateBounds(client,1.5f,new Preferences { TitleOffsetX=int.MaxValue },anchor).Left == 2518;
             anchor.Status="ambiguous";
             checks["ambiguous_title_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.Status="ok"; anchor.TitleBounds=new Rectangle(80,195,199,28);
@@ -257,7 +267,7 @@ namespace PersonalUsageOverlay
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
                 {
-                    foreach(int transparency in new[] {0,50,100})
+                    foreach(int transparency in new[] {0,10,20,30,40,50,60,70,80,90,100})
                     {
                         var layout=new BadgeLayoutSettings {BackgroundTransparency=transparency};
                         using(var bitmap=BadgeRenderer.CreateBitmap(new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),scale,theme,samples[0].Value,layout))

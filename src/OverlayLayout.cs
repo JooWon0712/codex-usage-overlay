@@ -18,8 +18,9 @@ namespace PersonalUsageOverlay
                 if (header.IsEmpty || anchor.TitleBounds.Width <= 0 || anchor.TitleBounds.Height <= 0 || !header.Contains(anchor.TitleBounds)) return Rectangle.Empty;
                 int top = Math.Max(anchor.TitleBounds.Bottom, header.Bottom) + (int)Math.Round(Math.Max(0, preferences.TitleGap) * scale);
                 if (header.Width < width || client.Bottom - top < height) return Rectangle.Empty;
-                int left = anchor.TitleBounds.Left + (int)Math.Round(preferences.TitleOffsetX * scale);
-                left = Math.Max(header.Left, Math.Min(left, header.Right - width));
+                double desiredLeft = anchor.TitleBounds.Left
+                    + Math.Round((preferences.TitleOffsetX - (double)Preferences.TitleLeadingInset) * scale);
+                int left = (int)Math.Max(header.Left, Math.Min(desiredLeft, header.Right - width));
                 return new Rectangle(left, top, width, height);
             }
             int bottomGap = preferences.SidebarBottomGap ?? (int)Math.Max(0L, Math.Min(3000L, (long)preferences.SidebarY - 46));

@@ -168,7 +168,7 @@ namespace PersonalUsageOverlay
                 x.Minimum = side ? 0 : -4000;
                 x.Value = Math.Max(x.Minimum, Math.Min(x.Maximum, side ? app.Prefs.SidebarX : app.Prefs.TitleOffsetX));
                 y.Value = Math.Max(0, Math.Min(3000, side ? (app.Prefs.SidebarBottomGap ?? (int)Math.Max(0L, Math.Min(3000L, (long)app.Prefs.SidebarY - 46))) : app.Prefs.TitleGap));
-                horizontal.Text = side ? "가로: 창 왼쪽에서" : "가로: 제목 왼쪽 보정";
+                horizontal.Text = side ? "가로: 창 왼쪽에서" : "가로: 기본 위치 보정";
                 vertical.Text = side ? "세로: 창 아래 여백" : "세로: 제목 영역 아래 간격";
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
                 if (app.Prefs.BadgeLayout == null) app.Prefs.BadgeLayout = new BadgeLayoutSettings();
@@ -195,7 +195,7 @@ namespace PersonalUsageOverlay
         {
             previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준";
             transparencyStatus.Text="배경 투명도 · "+(transparencyChoice.Value * 10)+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명"
-                : BadgeRenderer.UsesTextBacking(app.Theme,false)?" · 라이트 문구 바탕 유지":" · 글자는 그대로 표시");
+                : BadgeTextColors.Resolve(app.Theme,transparencyChoice.Value*10,false).Bright?" · 밝은 글자":" · 진한 글자");
         }
         public void UpdateUsage()
         {

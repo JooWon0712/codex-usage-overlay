@@ -6,6 +6,7 @@ namespace PersonalUsageOverlay
     public class Preferences
     {
         internal const string BelowTitle = "title-below";
+        internal const int TitleLeadingInset = 30;
         internal const int DefaultTitleOffsetX = 0, DefaultTitleGap = 6;
         public string Position = BelowTitle;
         public int SidebarX = 64, SidebarY = 82;

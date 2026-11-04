@@ -99,7 +99,7 @@ namespace PersonalUsageOverlay
                     && host.Prefs.TitleOffsetX == 12 && host.Prefs.TitleGap == 10;
                 position.SelectedIndex = 1;
                 checks["settings_binding_return_to_title_restores_title_coordinates_and_preserves_options"] = host.Prefs.Position == Preferences.BelowTitle
-                    && anchorX.Value == 12 && anchorY.Value == 10 && horizontal.Text.Contains("제목") && vertical.Text.Contains("제목")
+                    && anchorX.Value == 12 && anchorY.Value == 10 && horizontal.Text.Contains("기본 위치") && vertical.Text.Contains("제목")
                     && json.Serialize(preview.LayoutSettings) == priorLayout && !window.Visible;
                 ComboBox themes = Field<ComboBox>(window, "themeChoice");
                 themes.SelectedIndex = 2;

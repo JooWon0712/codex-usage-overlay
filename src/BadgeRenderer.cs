@@ -88,71 +88,10 @@ namespace PersonalUsageOverlay
             Bitmap bitmap = CreateGlyphBitmap(size, scale, theme, presentation, layout);
             try
             {
-                if (UsesTextBacking(theme, SystemInformation.HighContrast))
-                {
-                    Bitmap backed = CreateBackedTextBitmap(bitmap, scale, theme.Surface, layout);
-                    bitmap.Dispose();
-                    return backed;
-                }
-                AddTextOutline(bitmap, scale, theme.Surface);
-                return bitmap;
-            }
-            catch { bitmap.Dispose(); throw; }
-        }
-
-        internal static bool UsesTextBacking(VisualTheme theme, bool highContrast)
-        {
-            return !highContrast && !(theme ?? VisualTheme.Dark).IsDark;
-        }
-
-        private static Bitmap CreateBackedTextBitmap(Bitmap glyph, float scale, Color surface, BadgeLayoutSettings layout)
-        {
-            var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
-            normalized.Normalize();
-            var lines = new List<Rectangle>();
-            BitmapData data = glyph.LockBits(new Rectangle(Point.Empty, glyph.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-            try
-            {
-                var row = new byte[checked(glyph.Width * 4)];
-                foreach (BadgeElement element in normalized.Elements)
-                {
-                    if (!element.Visible || element.Key == "countdown") continue;
-                    var band = Rectangle.Round(new RectangleF(0, element.Y * scale, glyph.Width, BadgeLayoutSettings.ElementHeight(element) * scale));
-                    band.Intersect(new Rectangle(Point.Empty, glyph.Size));
-                    int left = glyph.Width, right = -1, top = glyph.Height, bottom = -1;
-                    for (int y = band.Top; y < band.Bottom; y++)
-                    {
-                        Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, row.Length);
-                        for (int x = 0; x < glyph.Width; x++)
-                        {
-                            if (row[x * 4 + 3] == 0) continue;
-                            left = Math.Min(left, x); right = Math.Max(right, x);
-                            top = Math.Min(top, y); bottom = Math.Max(bottom, y);
-                        }
-                    }
-                    if (right < left) continue;
-                    var backing = Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
-                    backing.Inflate((int)Math.Ceiling(3 * scale), (int)Math.Ceiling(2 * scale));
-                    backing.Intersect(new Rectangle(Point.Empty, glyph.Size));
-                    lines.Add(backing);
-                }
-            }
-            finally { glyph.UnlockBits(data); }
-
-            var bitmap = new Bitmap(glyph.Width, glyph.Height, PixelFormat.Format32bppPArgb);
-            try
-            {
-                using (Graphics graphics = Graphics.FromImage(bitmap))
-                using (Brush fill = new SolidBrush(surface))
-                {
-                    graphics.Clear(Color.Transparent);
-                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    // Protect only the actual ink of each line. The headline
-                    // and inline D-day share one backing; row gaps stay clear.
-                    foreach (Rectangle line in lines)
-                        using (GraphicsPath path = Rounded(line, 3 * scale)) graphics.FillPath(fill, path);
-                    graphics.DrawImageUnscaled(glyph, Point.Empty);
-                }
+                var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
+                normalized.Normalize();
+                BadgeTextColors colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
+                if (colors.UseOutline) AddTextOutline(bitmap, scale, colors.OutlineColor);
                 return bitmap;
             }
             catch { bitmap.Dispose(); throw; }
@@ -171,7 +110,8 @@ namespace PersonalUsageOverlay
                 {
                     graphics.Clear(Color.Transparent);
                     graphics.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
-                    DrawText(graphics,new Rectangle(Point.Empty,size),scale,theme,presentation,normalized);
+                    DrawText(graphics,new Rectangle(Point.Empty,size),scale,
+                        BadgeTextColors.Resolve(theme,normalized.BackgroundTransparency,SystemInformation.HighContrast),presentation,normalized);
                 }
                 return bitmap;
             }
@@ -286,7 +226,7 @@ namespace PersonalUsageOverlay
             }
         }
 
-        private static void DrawText(Graphics g,Rectangle bounds,float scale,VisualTheme theme,UsagePresentation presentation,BadgeLayoutSettings normalized)
+        private static void DrawText(Graphics g,Rectangle bounds,float scale,BadgeTextColors theme,UsagePresentation presentation,BadgeLayoutSettings normalized)
         {
             UsageTone tone=presentation==null?UsageTone.Attention:presentation.Tone;
             Color stateColor=tone==UsageTone.Low?theme.Danger:tone==UsageTone.Normal?theme.Success:theme.Attention;
