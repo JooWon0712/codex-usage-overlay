@@ -29,6 +29,8 @@ namespace PersonalUsageOverlay
             HeadlineLayoutChecks.Run(checks);
             ThemedPaintChecks.Run(checks);
             ThemedInputChecks.Run(checks);
+            BadgeTransparencyChecks.Run(checks);
+            LayeredWindowChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {
@@ -94,7 +96,7 @@ namespace PersonalUsageOverlay
             bool passed = true;
             foreach (bool result in checks.Values)
                 passed &= result;
-            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks, windowOrder = BadgeZOrderChecks.Observation });
+            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks, windowOrder = BadgeZOrderChecks.Observation, layeredWindow=LayeredWindowChecks.Observation });
             if (output != null)
                 File.WriteAllText(output, text, new UTF8Encoding(false));
             Environment.ExitCode = passed ? 0 : 1;
@@ -194,10 +196,8 @@ namespace PersonalUsageOverlay
                     foreach (float scale in new[] {1f,1.5f,2f})
                     {
                         var layout = new BadgeLayoutSettings();
-                        using (var badge = new Badge { ClientSize=new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),ScaleFactor=scale,Theme=theme,LayoutSettings=layout,Presentation=sample.Value })
-                        using (var bitmap = new Bitmap(badge.Width,badge.Height))
+                        using (var bitmap = BadgeRenderer.CreateBitmap(new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),scale,theme,sample.Value,layout))
                         {
-                            badge.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));
                             bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+sample.Name+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
                         }
                     }
@@ -238,10 +238,8 @@ namespace PersonalUsageOverlay
                         layout.Elements.Find(item => item.Key == "countdown").Visible = (mask & 2) != 0;
                         layout.Normalize();
                         string prefix = (theme.IsDark ? "dark-" : "light-") + "options-" + mask;
-                        using (var badge = new Badge { ClientSize=new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),ScaleFactor=scale,Theme=theme,LayoutSettings=layout,Presentation=samples[0].Value })
-                        using (var bitmap = new Bitmap(badge.Width,badge.Height))
+                        using (var bitmap = BadgeRenderer.CreateBitmap(new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),scale,theme,samples[0].Value,layout))
                         {
-                            badge.DrawToBitmap(bitmap,new Rectangle(Point.Empty,bitmap.Size));
                             bitmap.Save(Path.Combine(directory,prefix+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
                         }
                         if (mask != 0) continue;
@@ -259,6 +257,24 @@ namespace PersonalUsageOverlay
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
                 {
+                    foreach(int transparency in new[] {0,50,100})
+                    {
+                        var layout=new BadgeLayoutSettings {BackgroundTransparency=transparency};
+                        using(var bitmap=BadgeRenderer.CreateBitmap(new Size((int)(layout.Width*scale),(int)(layout.Height*scale)),scale,theme,samples[0].Value,layout))
+                            bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"transparency-"+transparency+"-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                        if(transparency==50)
+                        {
+                            var previewHost=new SettingsPreviewHost(theme); previewHost.SetBadgeLayout(layout);
+                            using(var previewWindow=new SettingsWindow(previewHost,scale))
+                            using(var previewBitmap=new Bitmap(previewWindow.ClientSize.Width,previewWindow.ClientSize.Height))
+                            {
+                                previewWindow.FormBorderStyle=FormBorderStyle.None;previewWindow.ShowInTaskbar=false;previewWindow.StartPosition=FormStartPosition.Manual;previewWindow.Location=new Point(-32000,-32000);previewWindow.Opacity=0;previewWindow.Show();
+                                previewWindow.DrawToBitmap(previewBitmap,new Rectangle(Point.Empty,previewWindow.ClientSize));
+                                previewBitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"transparency-settings-50-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                                previewWindow.Hide();
+                            }
+                        }
+                    }
                     var host = new SettingsPreviewHost(theme, Preferences.BelowTitle, samples[3].Value);
                     using (var window = new SettingsWindow(host, scale))
                     using (var bitmap = new Bitmap(window.ClientSize.Width, window.ClientSize.Height))

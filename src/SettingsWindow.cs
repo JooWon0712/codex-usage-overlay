@@ -20,6 +20,8 @@ namespace PersonalUsageOverlay
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
         private readonly ThemedButton problemToggle = new ThemedButton();
         private readonly TextBox problemDetails = new TextBox();
+        private readonly ThemedTrackBar transparencyChoice = new ThemedTrackBar();
+        private readonly Label transparencyStatus = new Label();
         private VisualTheme theme = VisualTheme.Dark;
         private readonly bool previewMode;
         private bool updating, problemExpanded;
@@ -32,7 +34,7 @@ namespace PersonalUsageOverlay
             app = owner;
             previewMode = previewScale.HasValue;
             Text = "Codex Usage Overlay";
-            ClientSize = new Size(600, 582);
+            ClientSize = new Size(600, 630);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             ShowIcon = true; Icon = SystemIcons.Application;
             MaximizeBox = false; MinimizeBox = true; ShowInTaskbar = true;
@@ -42,7 +44,7 @@ namespace PersonalUsageOverlay
             DoubleBuffered = true;
             AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
             AddLabel(this, "추가 항목을 켜고 끄면서 오버레이 미리보기를 확인하세요.", 22, 56, 556, 24, 12, false);
-            pageHost.SetBounds(20, 130, 560, 380); AddUi(this, pageHost);
+            pageHost.SetBounds(20, 130, 560, 428); AddUi(this, pageHost);
             pages = new[] { overlayPage, positionPage };
             string[] pageNames = { "오버레이", "표시 위치 · 테마" };
             for (int index = 0; index < pages.Length; index++)
@@ -58,18 +60,22 @@ namespace PersonalUsageOverlay
             AddLabel(overlayPage, "오버레이 미리보기", 16, 12, 520, 22, 12, true);
             preview.Presentation = UsagePresentation.CreatePreview(app.StartedAt);
             preview.AccessibleDescription = "프로그램 시작 시각으로 만든 예시 데이터입니다.";
-            preview.SetBounds(16, 42, 520, 140); AddUi(overlayPage, preview);
-            previewStatus.SetBounds(16, 192, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
-            AddLabel(overlayPage, "추가 항목 표시", 16, 224, 520, 22, 12, true);
-            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 254);
-            AddOption(countdownChoice, "초기화 디데이", 286);
-            AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 320, 520, 22, 11, false);
+            preview.SetBounds(16, 42, 520, 116); AddUi(overlayPage, preview);
+            previewStatus.SetBounds(16, 162, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
+            transparencyStatus.SetBounds(16,194,520,24); AddUi(overlayPage,transparencyStatus);
+            transparencyChoice.Minimum=0; transparencyChoice.Maximum=100; transparencyChoice.SmallChange=1; transparencyChoice.LargeChange=10;
+            transparencyChoice.TickStyle=TickStyle.None; transparencyChoice.AutoSize=false; transparencyChoice.AccessibleName="배경 투명도";
+            transparencyChoice.SetBounds(16,220,520,30); AddUi(overlayPage,transparencyChoice);
+            AddLabel(overlayPage, "추가 항목 표시", 16, 262, 520, 24, 14, true);
+            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 294);
+            AddOption(countdownChoice, "초기화 디데이", 330);
+            AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 366, 520, 22, 11, false);
             overlayPage.AutoScroll = true;
             problemToggle.Text = "문제 확인 ▸"; problemToggle.AccessibleName = "조회 실패 원인 펼치기";
-            problemToggle.SetBounds(16, 350, 132, 28); problemToggle.Visible = false;
+            problemToggle.SetBounds(16, 398, 132, 28); problemToggle.Visible = false;
             problemToggle.Click += delegate { SetProblemExpanded(!problemExpanded); }; AddUi(overlayPage, problemToggle);
             problemDetails.Multiline = true; problemDetails.ReadOnly = true; problemDetails.ScrollBars = ScrollBars.Vertical;
-            problemDetails.SetBounds(16, 388, 520, 116); problemDetails.AccessibleName = "조회 실패 원인과 조치";
+            problemDetails.SetBounds(16, 438, 520, 116); problemDetails.AccessibleName = "조회 실패 원인과 조치";
             problemDetails.Visible = false; AddUi(overlayPage, problemDetails);
 
             AddLabel(positionPage, "표시 위치", 24, 22, 508, 23, 12, true);
@@ -85,13 +91,14 @@ namespace PersonalUsageOverlay
             AddChoice(positionPage, themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 24, 294, 400);
             themeStatus.SetBounds(24, 334, 508, 36); AddUi(positionPage, themeStatus);
 
-            footer.SetBounds(22, 530, 274, 44); footer.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); footer.Text = "최소화하면 표시를 유지합니다.\nX 또는 종료를 누르면 완전히 종료됩니다."; AddUi(this, footer);
-            AddButton(this, "지금 갱신", 310, 532, 84, delegate { app.ManualRefresh(); });
-            AddButton(this, "앱에서 확인", 404, 532, 86, delegate { WindowState = FormWindowState.Minimized; app.ActivateTarget(); });
-            AddButton(this, "종료", 500, 532, 78, delegate { app.Quit(); });
+            footer.SetBounds(22, 578, 274, 44); footer.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); footer.Text = "최소화하면 표시를 유지합니다.\nX 또는 종료를 누르면 완전히 종료됩니다."; AddUi(this, footer);
+            AddButton(this, "지금 갱신", 310, 580, 84, delegate { app.ManualRefresh(); });
+            AddButton(this, "앱에서 확인", 404, 580, 86, delegate { WindowState = FormWindowState.Minimized; app.ActivateTarget(); });
+            AddButton(this, "종료", 500, 580, 78, delegate { app.Quit(); });
 
             resetChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             countdownChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
+            transparencyChoice.ValueChanged += delegate { SaveDisplayOptions(); };
             positionChoice.SelectedIndexChanged += delegate { if (!updating && positionChoice.SelectedIndex >= 0) { app.SetPosition(positionChoice.SelectedIndex == 0 ? "sidebar" : Preferences.BelowTitle); LoadPreferences(); } };
             themeChoice.SelectedIndexChanged += delegate { if (!updating && themeChoice.SelectedIndex >= 0) { app.SetTheme(new[] { "codex", "system", "light", "dark" }[themeChoice.SelectedIndex]); UpdateTheme(); } };
             x.ValueChanged += delegate { if (!updating) app.SetCoordinates((int)x.Value, (int)y.Value); };
@@ -99,6 +106,7 @@ namespace PersonalUsageOverlay
             uiScale = previewScale ?? Math.Max(96, Native.GetDpiForWindow(Handle)) / 96f;
             ScaleView(uiScale);
             preview.UiScale = uiScale;
+            transparencyChoice.ScaleFactor=uiScale;
             foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
             foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor=uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
             foreach (var number in new[] { x, y }) number.ScaleFactor=uiScale;
@@ -124,7 +132,7 @@ namespace PersonalUsageOverlay
                 var button = item.Item1 as ThemedButton; if (button != null) button.ScaleFactor = scale;
                 var number = item.Item1 as ThemedNumberField; if (number != null) number.ScaleFactor = scale;
             }
-            ClientSize = new Size((int)Math.Round(600 * scale), (int)Math.Round(582 * scale));
+            ClientSize = new Size((int)Math.Round(600 * scale), (int)Math.Round(630 * scale));
         }
         private void AddLabel(Control parent, string text, int left, int top, int width, int height, float size, bool bold)
         {
@@ -132,7 +140,7 @@ namespace PersonalUsageOverlay
             label.SetBounds(left, top, width, height); AddUi(parent, label);
         }
         private void AddOption(ThemedCheckBox choice, string text, int top)
-        { choice.Text = text; choice.AccessibleName = text; choice.SetBounds(16, top, 520, 26); AddUi(overlayPage, choice); }
+        { choice.Text = text; choice.AccessibleName = text; choice.Font=new Font(Font.FontFamily,14,GraphicsUnit.Pixel); choice.SetBounds(16, top, 520, 30); AddUi(overlayPage, choice); }
         private void AddButton(Control parent, string text, int left, int top, int width, EventHandler click)
         {
             var button = new ThemedButton { Text = text, AccessibleName = text }; button.SetBounds(left, top, width, 32); button.Click += click; AddUi(parent, button);
@@ -163,6 +171,7 @@ namespace PersonalUsageOverlay
                 vertical.Text = side ? "세로: 창 아래 여백" : "세로: 제목 영역 아래 간격";
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
                 preview.LayoutSettings = app.Prefs.BadgeLayout;
+                transparencyChoice.Value=preview.LayoutSettings.BackgroundTransparency;
                 resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
             }
             finally { updating = false; }
@@ -173,12 +182,16 @@ namespace PersonalUsageOverlay
         {
             if (updating) return;
             var layout = preview.LayoutSettings.Copy();
+            layout.BackgroundTransparency=transparencyChoice.Value;
             layout.Elements.Find(element => element.Key == "weekly-reset").Visible = resetChoice.Checked;
             layout.Elements.Find(element => element.Key == "countdown").Visible = countdownChoice.Checked;
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();
         }
         private void UpdatePreviewStatus()
-        { previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준"; }
+        {
+            previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준";
+            transparencyStatus.Text="배경 투명도 · "+transparencyChoice.Value+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명":" · 글자는 그대로 표시");
+        }
         public void UpdateUsage()
         {
             UpdateProblemDetails();
@@ -191,7 +204,7 @@ namespace PersonalUsageOverlay
             problemToggle.Visible = failed;
             string details = failed ? presentation.FailureDetails.Replace("\r\n", "\n").Replace("\n", Environment.NewLine) : String.Empty;
             if (problemDetails.Text != details) problemDetails.Text = details;
-            if (!failed) SetProblemExpanded(false);
+            if (!failed && problemExpanded) SetProblemExpanded(false);
         }
         private void SetProblemExpanded(bool expanded)
         {
@@ -199,7 +212,7 @@ namespace PersonalUsageOverlay
             problemToggle.Text = problemExpanded ? "문제 확인 ▾" : "문제 확인 ▸";
             problemToggle.AccessibleName = problemExpanded ? "조회 실패 원인 접기" : "조회 실패 원인 펼치기";
             problemDetails.Visible = problemExpanded;
-            overlayPage.AutoScrollMinSize = problemExpanded ? new Size(0, (int)Math.Round(520 * uiScale)) : Size.Empty;
+            overlayPage.AutoScrollMinSize = problemExpanded ? new Size(0, (int)Math.Round(570 * uiScale)) : Size.Empty;
             if (problemExpanded) overlayPage.ScrollControlIntoView(problemDetails);
             else overlayPage.AutoScrollPosition = Point.Empty;
         }
@@ -218,7 +231,7 @@ namespace PersonalUsageOverlay
         internal void SelectPreviewPage(int index) { if (previewMode) SelectPage(index); }
         internal void SetPreviewProblemExpanded(bool expanded) { if (previewMode) SetProblemExpanded(expanded); }
         public void UpdateTheme()
-        { if (!ReferenceEquals(theme, app.Theme)) ApplyTheme(app.Theme); themeStatus.Text = app.ThemeStatus; }
+        { if (!ReferenceEquals(theme, app.Theme)) ApplyTheme(app.Theme); themeStatus.Text = app.ThemeStatus; UpdatePreviewStatus(); }
         private void ApplyTheme(VisualTheme value)
         {
             theme = value ?? VisualTheme.Dark; BackColor = theme.Background; ForeColor = theme.Text;
@@ -230,9 +243,10 @@ namespace PersonalUsageOverlay
                 var choice = control as ThemedComboBox; if (choice != null) choice.Theme = theme;
                 var number = control as ThemedNumericUpDown; if (number != null) number.Theme = theme;
                 var field = control as ThemedNumberField; if (field != null) field.Theme = theme;
+                var slider = control as ThemedTrackBar; if (slider != null) slider.Theme = theme;
                 if (control is NumericUpDown || control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
-            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = theme.Muted;
+            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = theme.Muted;
             preview.Theme = theme; ApplyCaptionTheme(); Invalidate(true);
         }
         private void DrawChoice(object sender, DrawItemEventArgs e)

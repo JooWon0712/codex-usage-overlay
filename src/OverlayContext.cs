@@ -319,15 +319,14 @@ namespace PersonalUsageOverlay
                         bool reveal = !badge.Visible || badgeWasAdjustment != adjustingPosition;
                         try
                         {
-                            if (reveal) badge.Opacity = 0;
-                            if (!badge.Visible) badge.Show();
-                            bool placed = adjustingPosition ? BadgeZOrder.Place(badge.Handle, target, bounds)
-                                : Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40);
-                            if (!placed) badge.Hide();
+                            bool prepared=!reveal || badge.Present(0);
+                            if(prepared && !badge.Visible) badge.Show();
+                            bool placed=prepared && (adjustingPosition ? BadgeZOrder.Place(badge.Handle,target,bounds)
+                                : Native.SetWindowPos(badge.Handle,new IntPtr(-1),bounds.X,bounds.Y,bounds.Width,bounds.Height,0x10|0x40));
+                            if(!placed || !badge.Present()) badge.Hide();
                             badgeWasAdjustment = adjustingPosition;
                         }
                         catch { badge.Hide(); }
-                        finally { if (reveal) badge.Opacity = 1; }
                     }
                 }
                 else

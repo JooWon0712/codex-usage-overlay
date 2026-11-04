@@ -14,6 +14,7 @@ namespace PersonalUsageOverlay
     public sealed class BadgeLayoutSettings
     {
         public int Width = 320, Height = 82;
+        public int BackgroundTransparency = 0;
         public List<BadgeElement> Elements;
 
         public BadgeLayoutSettings()
@@ -29,12 +30,13 @@ namespace PersonalUsageOverlay
             bool countdown = OptionalVisible("countdown");
             Width = 320;
             Height = date ? 82 : 58;
+            BackgroundTransparency = Math.Max(0, Math.Min(100, BackgroundTransparency));
             Elements = FixedElements(date, countdown);
         }
 
         public BadgeLayoutSettings Copy()
         {
-            var copy = new BadgeLayoutSettings { Width = Width, Height = Height };
+            var copy = new BadgeLayoutSettings { Width = Width, Height = Height, BackgroundTransparency = BackgroundTransparency };
             if (Elements == null)
             {
                 copy.Elements = null;

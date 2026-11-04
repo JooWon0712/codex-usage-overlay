@@ -142,6 +142,57 @@ namespace PersonalUsageOverlay
                 && BadgeLayoutSettings.ElementHeight(new BadgeElement { FontSize = Single.MinValue }) > 0
                 && BadgeLayoutSettings.ElementHeight(new BadgeElement { FontSize = Single.MaxValue }) == 48
                 && 6 + BadgeLayoutSettings.ElementHeight(Find(defaults, "remaining")) <= Find(defaults, "updated").Y;
+            CheckTransparency(checks, serializer);
+        }
+
+        private static void CheckTransparency(Dictionary<string, bool> checks, JavaScriptSerializer serializer)
+        {
+            bool accepted = new BadgeLayoutSettings().BackgroundTransparency == 0;
+            foreach (int value in new[] { 0, 50, 100 })
+            {
+                var layout = new BadgeLayoutSettings { BackgroundTransparency = value };
+                layout.Normalize();
+                accepted &= layout.BackgroundTransparency == value;
+            }
+            checks["badge_background_transparency_defaults_opaque_and_accepts_zero_half_full"] = accepted;
+
+            bool clamped = true;
+            foreach (int value in new[] { Int32.MinValue, -1, 101, Int32.MaxValue })
+            {
+                var layout = new BadgeLayoutSettings { BackgroundTransparency = value };
+                layout.Normalize();
+                clamped &= layout.BackgroundTransparency == (value < 0 ? 0 : 100);
+            }
+            checks["badge_background_transparency_clamps_invalid_extremes_without_overflow"] = clamped;
+
+            var source = new BadgeLayoutSettings { BackgroundTransparency = Int32.MaxValue };
+            BadgeLayoutSettings copy = source.Copy();
+            bool rawPreserved = copy.BackgroundTransparency == Int32.MaxValue;
+            copy.Normalize();
+            var absentElements = new BadgeLayoutSettings { BackgroundTransparency = -20, Elements = null };
+            BadgeLayoutSettings absentCopy = absentElements.Copy();
+            checks["badge_background_transparency_copy_preserves_raw_value_before_normalization"] = rawPreserved
+                && source.BackgroundTransparency == Int32.MaxValue && copy.BackgroundTransparency == 100
+                && absentCopy.BackgroundTransparency == -20 && absentCopy.Elements == null;
+
+            BadgeLayoutSettings legacy = serializer.Deserialize<BadgeLayoutSettings>("{\"Elements\":[{\"Key\":\"weekly-reset\",\"Visible\":false},{\"Key\":\"countdown\",\"Visible\":true}]}");
+            legacy.Normalize();
+            checks["badge_background_transparency_missing_legacy_json_stays_opaque_and_keeps_choices"] = legacy.BackgroundTransparency == 0
+                && !Find(legacy, "weekly-reset").Visible && Find(legacy, "countdown").Visible && legacy.Height == 58;
+
+            bool roundTrips = true;
+            for (int mask = 0; mask < 4; mask++)
+            {
+                var layout = new BadgeLayoutSettings { BackgroundTransparency = 50 };
+                Find(layout, "weekly-reset").Visible = (mask & 1) != 0;
+                Find(layout, "countdown").Visible = (mask & 2) != 0;
+                BadgeLayoutSettings restored = serializer.Deserialize<BadgeLayoutSettings>(serializer.Serialize(layout));
+                restored.Normalize();
+                roundTrips &= restored.BackgroundTransparency == 50
+                    && Find(restored, "weekly-reset").Visible == ((mask & 1) != 0)
+                    && Find(restored, "countdown").Visible == ((mask & 2) != 0);
+            }
+            checks["badge_background_transparency_roundtrips_with_all_date_countdown_choices"] = roundTrips;
         }
 
         private static BadgeElement Find(BadgeLayoutSettings layout, string key)

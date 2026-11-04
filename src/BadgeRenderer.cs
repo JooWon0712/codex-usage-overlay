@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace PersonalUsageOverlay
@@ -24,17 +26,16 @@ namespace PersonalUsageOverlay
             int right = bounds.Left + (int)Math.Round((normalized.Width - 10) * scale);
             var result = new HeadlinePlacement { Main = new Rectangle(left, top, Math.Max(1, right - left), height) };
             if (!countdown.Visible) return result;
-            const TextFormatFlags flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix;
             using (var mainFont = new Font("Segoe UI", main.FontSize * scale, main.Bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel))
             using (var countdownFont = new Font("Segoe UI", countdown.FontSize * scale, countdown.Bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel))
             {
                 string mainText = TextOr(presentation == null ? null : presentation.MainText, "한도 확인 중");
                 string countdownText = TextOr(presentation == null ? null : presentation.CountdownText, "확인 불가");
                 int gap = Math.Max(1, (int)Math.Round(8 * scale));
-                int countdownWidth = Math.Min((int)Math.Round(countdown.Width * scale), TextRenderer.MeasureText(graphics, countdownText, countdownFont, new Size(Int32.MaxValue, Int32.MaxValue), flags).Width + (int)Math.Ceiling(2 * scale));
+                int countdownWidth = Math.Min((int)Math.Round(countdown.Width * scale), MeasureTextWidth(graphics, countdownText, countdownFont) + (int)Math.Ceiling(2 * scale));
                 countdownWidth = Math.Max(1, Math.Min(countdownWidth, right - left - gap - 1));
                 int available = Math.Max(1, right - left - gap - countdownWidth);
-                int measured = TextRenderer.MeasureText(graphics, mainText, mainFont, new Size(Int32.MaxValue, Int32.MaxValue), flags).Width;
+                int measured = MeasureTextWidth(graphics, mainText, mainFont);
                 int mainWidth = Math.Max(1, Math.Min(available, measured));
                 result.Main = new Rectangle(left, top, mainWidth, height);
                 result.Countdown = new Rectangle(left + mainWidth + gap, top, countdownWidth, height);
@@ -47,6 +48,36 @@ namespace PersonalUsageOverlay
             if (element == null)
                 return RectangleF.Empty;
             return new RectangleF(element.X, element.Y, element.Width, BadgeLayoutSettings.ElementHeight(element));
+        }
+
+        internal static byte BackgroundAlpha(int transparency, bool highContrast)
+        { return highContrast ? (byte)255 : (byte)Math.Round(255d * (100-Math.Max(0, Math.Min(100,transparency)))/100d); }
+
+        internal static int MeasureTextWidth(Graphics graphics, string text, Font font)
+        {
+            using (var format = TextFormat())
+                return Math.Max(1, (int)Math.Ceiling(graphics.MeasureString(text, font, Int32.MaxValue, format).Width));
+        }
+
+        private static StringFormat TextFormat()
+        {
+            var format = (StringFormat)StringFormat.GenericTypographic.Clone();
+            format.FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.MeasureTrailingSpaces;
+            format.Trimming = StringTrimming.EllipsisCharacter;
+            format.Alignment = StringAlignment.Near; format.LineAlignment = StringAlignment.Center;
+            return format;
+        }
+
+        internal static Bitmap CreateBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation, BadgeLayoutSettings layout)
+        {
+            var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
+            try
+            {
+                using (var graphics = Graphics.FromImage(bitmap))
+                { graphics.Clear(Color.Transparent); Draw(graphics, new Rectangle(Point.Empty,size), scale,theme,presentation,layout); }
+                return bitmap;
+            }
+            catch { bitmap.Dispose(); throw; }
         }
 
         public static void Draw(Graphics g, Rectangle bounds, float scale, VisualTheme theme,
@@ -80,18 +111,18 @@ namespace PersonalUsageOverlay
             GraphicsState saved = g.Save();
             try
             {
-                // Use device coordinates for both GDI+ and TextRenderer. The latter
-                // does not apply Graphics.ScaleTransform to its text rectangles.
                 g.ResetTransform();
                 g.SetClip(clip, CombineMode.Intersect);
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                 HeadlinePlacement headline = CalculateHeadline(g, bounds, scale, presentation, normalized);
                 float inset = 0.7f * scale;
                 var surface = new RectangleF(canvas.Left + inset, canvas.Top + inset,
                     Math.Max(0f, canvas.Width - inset * 2f), Math.Max(0f, canvas.Height - inset * 2f));
+                byte alpha = BackgroundAlpha(normalized.BackgroundTransparency, SystemInformation.HighContrast);
                 using (GraphicsPath path = Rounded(surface, 9f * scale))
-                using (Brush fill = new SolidBrush(theme.Surface))
-                using (Pen border = new Pen(theme.Border, Math.Max(1f, scale)))
+                using (Brush fill = new SolidBrush(Color.FromArgb(alpha,theme.Surface)))
+                using (Pen border = new Pen(Color.FromArgb(alpha,theme.Border), Math.Max(1f, scale)))
                 {
                     g.FillPath(fill, path);
                     g.DrawPath(border, path);
@@ -136,10 +167,12 @@ namespace PersonalUsageOverlay
                         continue;
                     using (var font = new Font("Segoe UI", element.FontSize * scale,
                         element.Bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel))
+                    using (var brush = new SolidBrush(color))
+                    using (var format = TextFormat())
                     {
-                        TextRenderer.DrawText(g, text, font, textBounds, color,
-                            TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis
-                            | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping);
+                        var textState=g.Save();
+                        try { g.SetClip(textBounds,CombineMode.Intersect); g.DrawString(text,font,brush,textBounds,format); }
+                        finally { g.Restore(textState); }
                     }
                 }
             }

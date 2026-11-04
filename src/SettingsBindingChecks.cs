@@ -12,6 +12,7 @@ namespace PersonalUsageOverlay
         public static void Run(Dictionary<string, bool> checks)
         {
             CheckInMemorySettingsBindings(checks);
+            CheckTransparencyBindings(checks);
             CheckFailureDisclosure(checks);
             CheckJsonRoundTrip(checks);
             CheckSidebarMigration(checks);
@@ -115,13 +116,67 @@ namespace PersonalUsageOverlay
             }
         }
 
+        private static void CheckTransparencyBindings(Dictionary<string, bool> checks)
+        {
+            var host = new SettingsPreviewHost(VisualTheme.Dark);
+            host.Prefs.BadgeLayout.BackgroundTransparency = 37;
+            host.Prefs.NormalizePosition();
+            BadgeLayoutSettings saved = host.Prefs.BadgeLayout;
+            using (var window = new SettingsWindow(host, 1f))
+            {
+                BadgePreview preview = Field<BadgePreview>(window, "preview");
+                Label previewLabel = Field<Label>(window, "previewStatus");
+                TrackBar transparency = Field<TrackBar>(window, "transparencyChoice");
+                Label transparencyLabel = Field<Label>(window, "transparencyStatus");
+                CheckBox reset = Field<CheckBox>(window, "resetChoice");
+                CheckBox countdown = Field<CheckBox>(window, "countdownChoice");
+                UsagePresentation cachedPreview = preview.Presentation;
+                string cachedText = PreviewText(cachedPreview), cachedLabel = previewLabel.Text;
+                window.LoadPreferences();
+                checks["settings_background_transparency_loads_saved_value_without_saving_or_showing"] = !window.Visible
+                    && transparency.Minimum == 0 && transparency.Maximum == 100 && transparency.Value == 37
+                    && transparencyLabel.Text.Contains("37") && preview.LayoutSettings.BackgroundTransparency == 37
+                    && Object.ReferenceEquals(saved, host.Prefs.BadgeLayout) && OptionsMatch(preview, host, true, true);
+
+                reset.Checked = countdown.Checked = false;
+                transparency.Value = 50;
+                checks["settings_background_transparency_slider_updates_independent_preview_and_preferences"] = transparency.Value == 50
+                    && preview.LayoutSettings.BackgroundTransparency == 50 && host.Prefs.BadgeLayout.BackgroundTransparency == 50
+                    && !Object.ReferenceEquals(preview.LayoutSettings, host.Prefs.BadgeLayout) && transparencyLabel.Text.Contains("50")
+                    && OptionsMatch(preview, host, false, false) && preview.LayoutSettings.Height == 58
+                    && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel);
+
+                transparency.Value = 0;
+                bool opaque = preview.LayoutSettings.BackgroundTransparency == 0 && host.Prefs.BadgeLayout.BackgroundTransparency == 0;
+                transparency.Value = 100;
+                checks["settings_background_transparency_endpoints_preserve_choices_and_example"] = opaque
+                    && preview.LayoutSettings.BackgroundTransparency == 100 && host.Prefs.BadgeLayout.BackgroundTransparency == 100
+                    && transparencyLabel.Text.Contains("100") && OptionsMatch(preview, host, false, false)
+                    && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
+
+                BadgeLayoutSettings external = host.Prefs.BadgeLayout.Copy();
+                external.BackgroundTransparency = 17;
+                host.SetBadgeLayout(external);
+                BadgeLayoutSettings beforeReload = host.Prefs.BadgeLayout;
+                window.LoadPreferences();
+                bool loaded = transparency.Value == 17 && preview.LayoutSettings.BackgroundTransparency == 17
+                    && host.Prefs.BadgeLayout.BackgroundTransparency == 17 && transparencyLabel.Text.Contains("17")
+                    && Object.ReferenceEquals(beforeReload, host.Prefs.BadgeLayout);
+                transparency.Value = 23;
+                checks["settings_background_transparency_model_reload_and_slider_save_work_both_directions"] = loaded
+                    && preview.LayoutSettings.BackgroundTransparency == 23 && host.Prefs.BadgeLayout.BackgroundTransparency == 23
+                    && transparencyLabel.Text.Contains("23") && OptionsMatch(preview, host, false, false)
+                    && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel) && !window.Visible;
+            }
+        }
+
         private static void CheckJsonRoundTrip(Dictionary<string, bool> checks)
         {
             var prefs = new Preferences
             {
                 Position = "sidebar", ThemeMode = "light", SidebarX = 111, SidebarY = 98,
                 SidebarBottomGap = 52, TitleOffsetX = -15, TitleGap = 12,
-                BadgeLayout = new BadgeLayoutSettings { Width = 420, Height = 160 }
+                BadgeLayout = new BadgeLayoutSettings { Width = 420, Height = 160, BackgroundTransparency = 50 }
             };
             BadgeElement remaining = Find(prefs.BadgeLayout, "remaining");
             remaining.X = 37; remaining.Y = 11; remaining.Width = 210; remaining.FontSize = 17.5f; remaining.Bold = false; remaining.Visible = false;
@@ -141,6 +196,7 @@ namespace PersonalUsageOverlay
                 && restored.TitleOffsetX == -15 && restored.TitleGap == 12;
             BadgeElement fixedRemaining = Find(restored.BadgeLayout, "remaining"), fixedUpdated = Find(restored.BadgeLayout, "updated");
             checks["settings_json_old_drag_geometry_and_style_migrate_to_fixed_layout"] = restored.BadgeLayout.Width == 320 && restored.BadgeLayout.Height == 82
+                && restored.BadgeLayout.BackgroundTransparency == 50
                 && fixedRemaining.X == 10 && fixedRemaining.Y == 6 && fixedRemaining.Width == 300 && fixedRemaining.FontSize == 14f && fixedRemaining.Bold
                 && fixedUpdated.X == 10 && fixedUpdated.Y == 31 && fixedUpdated.Width == 300 && fixedUpdated.FontSize == 11f && !fixedUpdated.Bold;
             checks["settings_json_only_date_countdown_choices_migrate_and_legacy_icon_is_removed"] = !restored.BadgeLayout.Elements.Exists(element => element.Key == "indicator")
@@ -263,7 +319,8 @@ namespace PersonalUsageOverlay
 
         private static bool LayoutsEqual(BadgeLayoutSettings first, BadgeLayoutSettings second)
         {
-            if (first.Width != second.Width || first.Height != second.Height || first.Elements.Count != second.Elements.Count)
+            if (first.Width != second.Width || first.Height != second.Height || first.BackgroundTransparency != second.BackgroundTransparency
+                || first.Elements.Count != second.Elements.Count)
                 return false;
             for (int i = 0; i < first.Elements.Count; i++)
             {

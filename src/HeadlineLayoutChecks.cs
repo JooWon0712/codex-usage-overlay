@@ -39,7 +39,7 @@ namespace PersonalUsageOverlay
                             var main = layout.Elements.Find(item => item.Key == "remaining");
                             using (var font = new Font("Segoe UI",main.FontSize*scale,FontStyle.Bold,GraphicsUnit.Pixel))
                             {
-                                int measured = TextRenderer.MeasureText(graphics,sample.MainText,font,new Size(Int32.MaxValue,Int32.MaxValue),TextFormatFlags.SingleLine|TextFormatFlags.NoPadding|TextFormatFlags.NoPrefix).Width;
+                                int measured = BadgeRenderer.MeasureTextWidth(graphics,sample.MainText,font);
                                 clipped &= placement.Main.Width <= measured;
                                 if (ReferenceEquals(sample,samples[0])) shortTitle &= placement.Main.Width == measured && placement.Countdown.Left < bounds.Left+(int)Math.Round(212*scale);
                                 if (ReferenceEquals(sample,longText)) clipped &= placement.Main.Width < measured;
