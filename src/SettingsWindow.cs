@@ -15,8 +15,8 @@ namespace PersonalUsageOverlay
         private Panel[] pages;
         private readonly BadgePreview preview = new BadgePreview();
         private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox();
-        private readonly ComboBox positionChoice = new ComboBox(), themeChoice = new ComboBox();
-        private readonly NumericUpDown x = new NumericUpDown(), y = new NumericUpDown();
+        private readonly ThemedComboBox positionChoice = new ThemedComboBox(), themeChoice = new ThemedComboBox();
+        private readonly ThemedNumericUpDown x = new ThemedNumericUpDown(), y = new ThemedNumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
         private readonly ThemedButton problemToggle = new ThemedButton();
         private readonly TextBox problemDetails = new TextBox();
@@ -100,7 +100,8 @@ namespace PersonalUsageOverlay
             ScaleView(uiScale);
             preview.UiScale = uiScale;
             foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
-            foreach (var choice in new[] { positionChoice, themeChoice }) choice.ItemHeight = (int)Math.Round(25 * uiScale);
+            foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor=uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
+            foreach (var number in new[] { x, y }) number.ScaleFactor=uiScale;
             if (!previewMode)
             {
                 var fullSize = ClientSize; var work = Screen.FromHandle(Handle).WorkingArea;
@@ -121,6 +122,7 @@ namespace PersonalUsageOverlay
                 if (item.Item1.Dock != DockStyle.Fill) item.Item1.SetBounds((int)Math.Round(item.Item2.X * scale), (int)Math.Round(item.Item2.Y * scale), (int)Math.Round(item.Item2.Width * scale), (int)Math.Round(item.Item2.Height * scale));
                 item.Item1.Font = new Font(item.Item3.FontFamily, item.Item3.Size * scale, item.Item3.Style, GraphicsUnit.Pixel);
                 var button = item.Item1 as ThemedButton; if (button != null) button.ScaleFactor = scale;
+                var number = item.Item1 as ThemedNumberField; if (number != null) number.ScaleFactor = scale;
             }
             ClientSize = new Size((int)Math.Round(600 * scale), (int)Math.Round(582 * scale));
         }
@@ -141,7 +143,11 @@ namespace PersonalUsageOverlay
             choice.Items.AddRange(items); choice.SetBounds(left, top, width, 28); choice.DrawItem += DrawChoice; AddUi(parent, choice);
         }
         private void AddNumber(Control parent, NumericUpDown number, string label, int left, int top, int width, int min, int max)
-        { number.AccessibleName = label; number.Minimum = min; number.Maximum = max; number.SetBounds(left, top, width, 28); AddUi(parent, number); }
+        {
+            number.AccessibleName=label; number.Minimum=min; number.Maximum=max;
+            var field=new ThemedNumberField((ThemedNumericUpDown)number) { AccessibleName=label };
+            field.SetBounds(left,top,width,32); AddUi(parent,field);
+        }
 
         public void LoadPreferences()
         {
@@ -221,6 +227,9 @@ namespace PersonalUsageOverlay
                 control.ForeColor = theme.Text; control.BackColor = control is Label ? Color.Transparent : theme.Background;
                 var button = control as ThemedButton; if (button != null) button.Theme = theme;
                 var check = control as ThemedCheckBox; if (check != null) check.Theme = theme;
+                var choice = control as ThemedComboBox; if (choice != null) choice.Theme = theme;
+                var number = control as ThemedNumericUpDown; if (number != null) number.Theme = theme;
+                var field = control as ThemedNumberField; if (field != null) field.Theme = theme;
                 if (control is NumericUpDown || control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
             previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = theme.Muted;

@@ -28,6 +28,7 @@ namespace PersonalUsageOverlay
             SettingsBindingChecks.Run(checks);
             HeadlineLayoutChecks.Run(checks);
             ThemedPaintChecks.Run(checks);
+            ThemedInputChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {
