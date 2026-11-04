@@ -47,7 +47,7 @@ try {
     catch { $failed = $true; $rollbackConfirmed = $_.Exception.Data['RollbackSucceeded'] -eq $true }
     finally { $lock.Dispose() }
     Assert-InstallTest $failed 'locked replacement aborts update'
-    Assert-InstallTest $rollbackConfirmed 'restart allowed only after confirmed rollback'
+    Assert-InstallTest $rollbackConfirmed 'failed update confirms successful file rollback'
     Assert-InstallTest (([IO.File]::ReadAllText((Join-Path $rollbackTarget 'UsageOverlay.exe'))) -eq 'original-executable') 'earlier replacement rolled back after later failure'
     Assert-InstallTest (([IO.File]::ReadAllText((Join-Path $rollbackTarget 'worker.mjs'))) -eq 'original-worker') 'locked original remains intact'
 
@@ -99,6 +99,12 @@ try {
     $rejected = $false
     try { Assert-CuoLeafNames @('worker.mjs','WORKER.MJS') } catch { $rejected = $true }
     Assert-InstallTest $rejected 'case-insensitive duplicate package name rejected'
+
+    # Dot-source mode cannot install even if the conflicting-option guard regresses.
+    $rejected = $false
+    try { . (Join-Path $PSScriptRoot 'install.ps1') -Launch -NoLaunch }
+    catch { $rejected = $_.Exception.Message -eq 'Use either -Launch or -NoLaunch, not both.' }
+    Assert-InstallTest $rejected 'conflicting launch options rejected before installation'
 
     [pscustomobject]@{ passed=$checks.Count; failed=0; checks=@($checks) } | ConvertTo-Json -Depth 3
 }

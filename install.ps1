@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
-param([switch]$NoLaunch)
+param([switch]$Launch, [switch]$NoLaunch)
 
 $ErrorActionPreference = 'Stop'
+if ($Launch -and $NoLaunch) { throw 'Use either -Launch or -NoLaunch, not both.' }
 $script:CuoApplicationId = 'Personal.CodexUsageOverlay'
 $script:CuoPackageFiles = @('UsageOverlay.exe', 'runtime-paths.json', 'worker.mjs', 'probe.mjs', 'usage-state.mjs', 'README.md', '사용안내.txt')
 
@@ -180,7 +181,7 @@ function Initialize-CuoSettings {
 }
 
 function Invoke-CuoInstall {
-    param([switch]$SkipLaunch)
+    param([switch]$LaunchAfterInstall)
     $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
     if ([string]::IsNullOrWhiteSpace($local)) { throw 'The per-user application-data directory is unavailable.' }
     $destination = Assert-CuoChildPath (Join-Path $local 'Programs\CodexUsageOverlay') $local
@@ -193,15 +194,13 @@ function Invoke-CuoInstall {
     $installerAcquired = $false
     $updateMutex = $null
     $updateAcquired = $false
-    $wasRunning = $false
-    $stopped = $false
     $failure = $null
     $installedExe = Join-Path $destination 'UsageOverlay.exe'
     try {
         try { $installerAcquired = $installerMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $installerAcquired = $true }
         if (-not $installerAcquired) { throw 'Another installation/update is already running.' }
         if (-not ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'UsageOverlay.exe'))).Equals([IO.Path]::GetFullPath($installedExe), [StringComparison]::OrdinalIgnoreCase)) {
-            if (@(Get-CuoProcessAtPath (Join-Path $PSScriptRoot 'UsageOverlay.exe')).Count -gt 0) { throw 'The older workspace prototype is still running. Exit it from its settings/tray menu, then run install.ps1 again. It was not force-terminated.' }
+            if (@(Get-CuoProcessAtPath (Join-Path $PSScriptRoot 'UsageOverlay.exe')).Count -gt 0) { throw 'The older workspace prototype is still running. Close or exit that copy, then run install.ps1 again. It was not force-terminated.' }
         }
         $buildRoot = Join-Path $PSScriptRoot '.build'
         $null = New-Item -ItemType Directory -Path $buildRoot -Force
@@ -227,10 +226,8 @@ function Invoke-CuoInstall {
         Assert-CuoNoReparsePoint $destination $local
         Assert-CuoInstallOwnership $destination
         $runningInstances = @(Get-CuoProcessAtPath $installedExe)
-        $wasRunning = $runningInstances.Count -gt 0
         $shutdownExe = if (Test-Path -LiteralPath $installedExe -PathType Leaf) { $installedExe } else { Join-Path $stage 'UsageOverlay.exe' }
         Invoke-CuoShutdown $shutdownExe
-        $stopped = $true
         foreach ($instance in $runningInstances) {
             try { if (-not $instance.WaitForExit(5000)) { throw 'The old process is still exiting; no installed files were replaced.' } }
             finally { $instance.Dispose() }
@@ -245,16 +242,14 @@ function Invoke-CuoInstall {
         $installerMutex.Dispose()
     }
     if ($failure) {
-        if ($wasRunning -and $stopped -and $failure.Exception.Data['RollbackSucceeded'] -eq $true -and -not $SkipLaunch -and (Test-Path -LiteralPath $installedExe -PathType Leaf) -and @(Get-CuoProcessAtPath $installedExe).Count -eq 0) {
-            try { $null = Start-Process -FilePath $installedExe -ArgumentList '--background' -WindowStyle Hidden }
-            catch { Write-Warning 'The previous files were retained/restored, but the program could not be restarted.' }
-        }
+        # A rolled-back installation may still be a legacy tray version. Do not launch it.
         throw $failure
     }
-    if (-not $SkipLaunch) { $null = Start-Process -FilePath $installedExe -ArgumentList '--background' -WindowStyle Hidden }
+    if ($LaunchAfterInstall) { $null = Start-Process -FilePath $installedExe -WindowStyle Normal }
     Write-Output "Installed/updated: $installedExe"
     Write-Output "Settings preserved at: $dataDirectory"
+    if (-not $LaunchAfterInstall) { Write-Output 'Program not launched. Use -Launch to open it after installation.' }
     Write-Output 'No startup registration or scheduled task was created.'
 }
 
-if ($MyInvocation.InvocationName -ne '.') { Invoke-CuoInstall -SkipLaunch:$NoLaunch }
+if ($MyInvocation.InvocationName -ne '.') { Invoke-CuoInstall -LaunchAfterInstall:$Launch }
