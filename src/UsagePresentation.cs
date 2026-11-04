@@ -129,14 +129,16 @@ namespace PersonalUsageOverlay
                 case "free": return "Free";
                 case "go": return "Go";
                 case "plus": return "Plus";
-                case "pro": return "Pro";
+                case "prolite": return "Pro 100";
+                case "pro": return "Pro 200";
+                case "promax": return "Pro 500";
                 case "team": return "Team";
                 case "business": return "Business";
                 case "enterprise": return "Enterprise";
                 case "edu": return "Edu";
                 // Preserve the verified protocol identifier for specialized plans;
                 // do not invent a retail name, price or paid entitlement from it.
-                case "prolite": case "promax": case "self_serve_business_prolite":
+                case "self_serve_business_prolite":
                 case "self_serve_business_usage_based": case "ent26":
                 case "enterprise_cbp_automation": case "enterprise_cbp_usage_based":
                 case "edu_plus": case "edu_pro": case "sci": case "sci_plus":

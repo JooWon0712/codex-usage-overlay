@@ -28,7 +28,7 @@ namespace PersonalUsageOverlay
                 && !cleared.HasSameDisplayAs(changed) && cleared.HasSameDisplayAs(UsagePresentation.Create(state, now, TimeZoneInfo.Utc))
                 && !presentation.HasSameDisplayAs(null);
             var names = new Dictionary<string, string> {
-                {"free","Free"},{"go","Go"},{"plus","Plus"},{"pro","Pro"},
+                {"free","Free"},{"go","Go"},{"plus","Plus"},{"prolite","Pro 100"},{"pro","Pro 200"},{"promax","Pro 500"},
                 {"team","Team"},{"business","Business"},{"enterprise","Enterprise"},{"edu","Edu"}
             };
             bool labels = true;
@@ -39,7 +39,7 @@ namespace PersonalUsageOverlay
             }
             checks["plan_common_labels_follow_verified_wire_type_without_price_or_paid_inference"] = labels;
             bool specialized = true;
-            foreach (string value in new[] {"prolite","promax","self_serve_business_prolite","self_serve_business_usage_based","ent26",
+            foreach (string value in new[] {"self_serve_business_prolite","self_serve_business_usage_based","ent26",
                 "enterprise_cbp_automation","enterprise_cbp_usage_based","edu_plus","edu_pro","sci","sci_plus"})
             {
                 state.planType = value;
@@ -57,12 +57,12 @@ namespace PersonalUsageOverlay
             state.planType = "pro";
             state.status = "stale"; state.reason = "request_timeout";
             var failed = UsagePresentation.Create(state, now, TimeZoneInfo.Utc);
-            checks["plan_failed_refresh_keeps_previous_label_and_failure_time_visible"] = failed.PlanText == "이전 Pro"
+            checks["plan_failed_refresh_keeps_previous_label_and_failure_time_visible"] = failed.PlanText == "이전 Pro 200"
                 && failed.BadgeDetailText(true).Contains("갱신 실패") && failed.BadgeDetailText(true).Contains("00:00:00") && failed.HasQueryFailure;
             state.status = "loading"; state.reason = null;
-            checks["plan_refreshing_snapshot_labels_retained_value_as_previous"] = UsagePresentation.Create(state, now, TimeZoneInfo.Utc).PlanText == "이전 Pro";
+            checks["plan_refreshing_snapshot_labels_retained_value_as_previous"] = UsagePresentation.Create(state, now, TimeZoneInfo.Utc).PlanText == "이전 Pro 200";
             state.status = "ok";
-            checks["plan_expired_observation_does_not_claim_current_subscription"] = UsagePresentation.Create(state, now.AddMinutes(3), TimeZoneInfo.Utc).PlanText == "이전 Pro";
+            checks["plan_expired_observation_does_not_claim_current_subscription"] = UsagePresentation.Create(state, now.AddMinutes(3), TimeZoneInfo.Utc).PlanText == "이전 Pro 200";
             state.reason = "account_changed";
             checks["plan_account_change_does_not_leak_previous_account_even_with_malformed_retained_data"] = UsagePresentation.Create(state, now, TimeZoneInfo.Utc).PlanText == "요금제 확인 불가";
             state.reason = null; state.observedAt = now.AddSeconds(1).ToString("o");
