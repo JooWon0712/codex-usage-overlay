@@ -43,12 +43,18 @@ namespace PersonalUsageOverlay
             Controls.Add(detail);
             AddLabel("표시 위치", 22, 242, 410, 23, 9, true);
             sidebar.Text = "사이드바";
-            sidebar.SetBounds(24, 271, 180, 27);
+            sidebar.AccessibleName = "사이드바";
+            sidebar.Appearance = Appearance.Button;
+            sidebar.TextAlign = ContentAlignment.MiddleLeft;
+            sidebar.SetBounds(24, 268, 180, 31);
             Controls.Add(sidebar);
             title.Text = "세션 제목 아래";
-            title.SetBounds(222, 271, 200, 27);
+            title.AccessibleName = "세션 제목 아래";
+            title.Appearance = Appearance.Button;
+            title.TextAlign = ContentAlignment.MiddleLeft;
+            title.SetBounds(222, 268, 200, 31);
             Controls.Add(title);
-            positionStatus.SetBounds(24, 302, 398, 17);
+            positionStatus.SetBounds(24, 304, 398, 17);
             positionStatus.Font = new Font(Font.FontFamily, 10, FontStyle.Regular, GraphicsUnit.Pixel);
             Controls.Add(positionStatus);
             horizontal.SetBounds(24, 324, 180, 24);
@@ -89,8 +95,8 @@ namespace PersonalUsageOverlay
             });
             AddButton("종료", 338, 482, 84, 32, delegate { app.Quit(); });
             AddLabel("최소화하면 표시를 유지합니다. X 또는 종료를 누르면 완전히 종료됩니다.", 24, 530, 398, 30, 8, false);
-            sidebar.CheckedChanged += delegate { if (!updating && sidebar.Checked) app.SetPosition("sidebar"); };
-            title.CheckedChanged += delegate { if (!updating && title.Checked) app.SetPosition(Preferences.BelowTitle); };
+            sidebar.CheckedChanged += delegate { UpdatePositionChoices(); if (!updating && sidebar.Checked) app.SetPosition("sidebar"); };
+            title.CheckedChanged += delegate { UpdatePositionChoices(); if (!updating && title.Checked) app.SetPosition(Preferences.BelowTitle); };
             themeChoice.SelectedIndexChanged += delegate
             {
                 if (!updating)
@@ -154,6 +160,30 @@ namespace PersonalUsageOverlay
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
             }
             finally { updating = false; }
+            UpdatePositionChoices();
+        }
+
+        private void UpdatePositionChoices()
+        {
+            StylePositionChoice(sidebar, "사이드바");
+            StylePositionChoice(title, "세션 제목 아래");
+        }
+
+        private void StylePositionChoice(RadioButton choice, string label)
+        {
+            bool selected = choice.Checked;
+            bool contrast = SystemInformation.HighContrast;
+            Color selectedFill = contrast ? SystemColors.Highlight : theme.Pressed;
+            choice.Text = selected ? "✓ " + label : label;
+            choice.Padding = new Padding((int)Math.Round(10 * uiScale), 0, (int)Math.Round(6 * uiScale), 0);
+            choice.BackColor = selected ? selectedFill : theme.Surface;
+            choice.ForeColor = selected && contrast ? SystemColors.HighlightText : theme.Text;
+            choice.FlatAppearance.BorderColor = selected ? theme.Accent : theme.Border;
+            choice.FlatAppearance.BorderSize = Math.Max(1, (int)Math.Round((selected ? 2 : 1) * uiScale));
+            choice.FlatAppearance.CheckedBackColor = selectedFill;
+            choice.FlatAppearance.MouseOverBackColor = selected ? selectedFill : theme.Hover;
+            choice.FlatAppearance.MouseDownBackColor = selectedFill;
+            choice.Invalidate();
         }
 
         public void UpdateUsage()
@@ -195,6 +225,7 @@ namespace PersonalUsageOverlay
                 }
             }
             detail.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = theme.Muted;
+            UpdatePositionChoices();
             ApplyCaptionTheme();
             Invalidate(true);
         }

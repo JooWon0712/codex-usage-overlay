@@ -5,11 +5,11 @@ namespace PersonalUsageOverlay
     {
         private readonly Preferences prefs = new Preferences();
         private readonly VisualTheme theme;
-        public SettingsPreviewHost(VisualTheme theme) { this.theme = theme; }
+        public SettingsPreviewHost(VisualTheme theme, string position = Preferences.BelowTitle) { this.theme = theme; prefs.Position = position; }
         public Preferences Prefs { get { return prefs; } }
         public string MainText { get { return "주간 75% · 5시간 98% 남음"; } }
         public string Details { get { return "연결된 Codex 계정의 한도\n갱신 12:34:56 · Codex 계정\n주간 초기화: 11/10 12:00:00 +09:00\n5시간 초기화: 11/04 17:00:00 +09:00"; } }
-        public string PositionStatus { get { return "본문 제목 아래 · 자동 위치 확인됨"; } }
+        public string PositionStatus { get { return prefs.Position == "sidebar" ? "사이드바 · 창 기준 위치" : "본문 제목 아래 · 자동 위치 확인됨"; } }
         public string ThemeStatus { get { return theme.IsDark ? "Codex · 다크 (미리보기)" : "Codex · 라이트 (미리보기)"; } }
         public VisualTheme Theme { get { return theme; } }
         public void SetPosition(string value) { }

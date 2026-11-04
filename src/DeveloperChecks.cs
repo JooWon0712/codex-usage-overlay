@@ -224,8 +224,9 @@ namespace PersonalUsageOverlay
                         bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + sample.Name + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
                     }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                foreach (string position in new[] { "sidebar", Preferences.BelowTitle })
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
-                    using (var window = new SettingsWindow(new SettingsPreviewHost(theme), scale))
+                    using (var window = new SettingsWindow(new SettingsPreviewHost(theme, position), scale))
                     using (var bitmap = new Bitmap(window.ClientSize.Width, window.ClientSize.Height))
                     {
                         // A transparent, off-screen fixture creates native child controls.
@@ -239,7 +240,7 @@ namespace PersonalUsageOverlay
                         bitmap.SetResolution(96 * scale, 96 * scale);
                         window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.ClientSize));
                         window.Hide();
-                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + "settings-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + "settings-" + position + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
                     }
         }
     }
