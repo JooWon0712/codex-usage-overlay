@@ -21,6 +21,7 @@ namespace PersonalUsageOverlay
             var state = new UsageState
             {
                 status = status,
+                planType = status == "loading" ? null : "plus",
                 observedAt = status == "loading" ? null : (status == "stale" ? now.AddMinutes(-4) : now).ToString("o"),
                 attemptedAt = status == "stale" ? now.ToString("o") : null,
                 reason = status == "stale" ? "request_timeout" : null

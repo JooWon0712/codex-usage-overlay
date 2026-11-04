@@ -15,6 +15,7 @@ namespace PersonalUsageOverlay
     {
         public int Width = 320, Height = 82;
         public int BackgroundTransparency = 0;
+        public bool ShowPlan = true;
         public List<BadgeElement> Elements;
 
         public BadgeLayoutSettings()
@@ -37,7 +38,7 @@ namespace PersonalUsageOverlay
 
         public BadgeLayoutSettings Copy()
         {
-            var copy = new BadgeLayoutSettings { Width = Width, Height = Height, BackgroundTransparency = BackgroundTransparency };
+            var copy = new BadgeLayoutSettings { Width = Width, Height = Height, BackgroundTransparency = BackgroundTransparency, ShowPlan = ShowPlan };
             if (Elements == null)
             {
                 copy.Elements = null;

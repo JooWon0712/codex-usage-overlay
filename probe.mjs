@@ -3,6 +3,25 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
 let koreaResetFormatter;
+// Only documented plan enum values may cross the worker boundary.
+// `unknown` exists in the protocol enum but is not an identified subscription.
+const PLAN_TYPES = new Set([
+  'free', 'go', 'plus', 'pro', 'prolite', 'promax', 'team',
+  'self_serve_business_prolite', 'self_serve_business_usage_based', 'business',
+  'ent26', 'enterprise_cbp_automation', 'enterprise_cbp_usage_based', 'enterprise',
+  'edu', 'edu_plus', 'edu_pro', 'sci', 'sci_plus',
+]);
+
+function codexPlanType(buckets) {
+  const candidates = buckets.filter(([key, bucket]) => key === 'codex' || bucket?.limitId === 'codex');
+  if (candidates.length !== 1) return null;
+  const [key, bucket] = candidates[0];
+  // The multi-bucket map key and any declared ID must identify the same Codex
+  // bucket. Never repair conflicting/duplicate IDs using the legacy response.
+  if (key !== 'codex' || !bucket || typeof bucket !== 'object'
+    || (bucket.limitId != null && bucket.limitId !== 'codex')) return null;
+  return typeof bucket.planType === 'string' && PLAN_TYPES.has(bucket.planType) ? bucket.planType : null;
+}
 
 function formatResetKorea(seconds) {
   if (!Number.isFinite(seconds)) return null;
@@ -126,6 +145,8 @@ export function normalizeLimits(result, now = new Date()) {
   const buckets = byId && typeof byId === 'object'
     ? Object.entries(byId)
     : result?.rateLimits ? [[result.rateLimits.limitId ?? 'unknown', result.rateLimits]] : [];
+  // A malformed present map is not permission to infer a legacy plan.
+  const planBuckets = byId != null && (typeof byId !== 'object' || Array.isArray(byId)) ? [] : buckets;
   const windows = [];
   for (const [key, bucket] of buckets) {
     for (const name of ['primary', 'secondary']) {
@@ -147,6 +168,7 @@ export function normalizeLimits(result, now = new Date()) {
     status: windows.length ? 'ok' : 'unavailable',
     source: 'documented_codex_app_server',
     observedAt: now.toISOString(),
+    planType: codexPlanType(planBuckets),
     windows,
   };
 }

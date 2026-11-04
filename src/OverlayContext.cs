@@ -350,7 +350,7 @@ namespace PersonalUsageOverlay
             MainText = presentation.MainText;
             Details = presentation.Details;
             var prior = Presentation;
-            if (prior == null || prior.MainText != presentation.MainText || prior.DetailText != presentation.DetailText || prior.ResetDateText != presentation.ResetDateText || prior.CountdownText != presentation.CountdownText || prior.Details != presentation.Details || prior.LowWeeklyRemaining != presentation.LowWeeklyRemaining || prior.Tone != presentation.Tone || prior.HasQueryFailure != presentation.HasQueryFailure || prior.FailureDetails != presentation.FailureDetails)
+            if (!presentation.HasSameDisplayAs(prior))
             {
                 Presentation = presentation;
                 badge.Presentation = presentation;

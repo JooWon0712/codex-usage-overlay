@@ -11,10 +11,11 @@ namespace PersonalUsageOverlay
     {
         public readonly string MainText, DetailText, Details, ResetText, ResetDateText, CountdownText, FailureDetails;
         public readonly bool HasQueryFailure;
+        public readonly string PlanText;
         public readonly double? LowWeeklyRemaining;
         public readonly UsageTone Tone;
         private UsagePresentation(string mainText, string detailText, ResetPresentation reset, string details,
-            double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails)
+            double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails, string planText)
         {
             MainText = mainText;
             DetailText = detailText;
@@ -26,6 +27,24 @@ namespace PersonalUsageOverlay
             Tone = tone;
             HasQueryFailure = hasQueryFailure;
             FailureDetails = failureDetails;
+            PlanText = planText;
+        }
+
+        public string BadgeDetailText(bool showPlan)
+        {
+            if (!showPlan) return DetailText;
+            const string accountSuffix = " · Codex 계정";
+            string text = DetailText.EndsWith(accountSuffix, StringComparison.Ordinal)
+                ? DetailText.Substring(0, DetailText.Length - accountSuffix.Length) : DetailText;
+            return text + " · " + PlanText;
+        }
+
+        internal bool HasSameDisplayAs(UsagePresentation prior)
+        {
+            return prior != null && prior.MainText == MainText && prior.DetailText == DetailText && prior.PlanText == PlanText
+                && prior.ResetDateText == ResetDateText && prior.CountdownText == CountdownText && prior.Details == Details
+                && prior.LowWeeklyRemaining == LowWeeklyRemaining && prior.Tone == Tone
+                && prior.HasQueryFailure == HasQueryFailure && prior.FailureDetails == FailureDetails;
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now)
@@ -53,7 +72,7 @@ namespace PersonalUsageOverlay
             };
             var reset = WeeklyResetText(windows, startedAt, zone, true);
             return new UsagePresentation("주간 96% 남음", "갱신 " + TimeText(startedAt.ToString("o", CultureInfo.InvariantCulture), zone) + " · 예시",
-                reset, "설정 미리보기용 예시 데이터", null, UsageTone.Normal, false, String.Empty);
+                reset, "설정 미리보기용 예시 데이터", null, UsageTone.Normal, false, String.Empty, "Plus");
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone)
@@ -94,8 +113,36 @@ namespace PersonalUsageOverlay
                 details += "\n상태: " + FriendlyReason(state.reason);
             var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
             bool hasQueryFailure = IsQueryFailure(state);
+            string planName = PlanName(state.planType);
+            bool hasPlanObservation = windows.Count > 0 && TryTime(state.observedAt, out observed)
+                && observed <= now && state.reason != "account_changed";
+            string planText = hasPlanObservation && planName != null ? (fresh ? "" : "이전 ") + planName
+                : status == "loading" && state.observedAt == null ? "요금제 확인 중" : "요금제 확인 불가";
             return new UsagePresentation(mainText, detailText, resetText, details, lowWeekly, tone,
-                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty);
+                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText);
+        }
+
+        private static string PlanName(string value)
+        {
+            switch (value)
+            {
+                case "free": return "Free";
+                case "go": return "Go";
+                case "plus": return "Plus";
+                case "pro": return "Pro";
+                case "team": return "Team";
+                case "business": return "Business";
+                case "enterprise": return "Enterprise";
+                case "edu": return "Edu";
+                // Preserve the verified protocol identifier for specialized plans;
+                // do not invent a retail name, price or paid entitlement from it.
+                case "prolite": case "promax": case "self_serve_business_prolite":
+                case "self_serve_business_usage_based": case "ent26":
+                case "enterprise_cbp_automation": case "enterprise_cbp_usage_based":
+                case "edu_plus": case "edu_pro": case "sci": case "sci_plus":
+                    return "요금제: " + value;
+                default: return null;
+            }
         }
 
         private static bool IsQueryFailure(UsageState state)

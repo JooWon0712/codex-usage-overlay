@@ -13,6 +13,11 @@ const quota = (used = 25, more = {}) => ({ rateLimitsByLimitId: {
   codex: { limitId: 'codex', primary: { usedPercent: used, windowDurationMins: 10080, resetsAt: 1700000000 } },
   ...more,
 } });
+const planQuota = planType => {
+  const result = quota();
+  result.rateLimitsByLimitId.codex.planType = planType;
+  return result;
+};
 
 function harness(outcomes) {
   let now = Date.parse('2020-01-01T00:00:00Z');
@@ -105,6 +110,61 @@ test('unknown exception text never leaves the worker state', () => {
   assert.equal(state.failure(new Error('rpc_error_-32000')).reason, 'rpc_error_-32000');
 });
 
+test('the plan starts unknown and only the latest successful read may replace it', () => {
+  const state = new UsageState();
+  assert.equal(state.snapshot().planType, null);
+  assert.equal(state.success(normalizeLimits(planQuota('plus')), 0).planType, 'plus');
+  assert.equal(state.success(normalizeLimits(planQuota('pro')), 1000).planType, 'pro');
+  assert.equal(state.success(normalizeLimits(quota()), 2000).planType, null, 'a new success without plan data clears the previous plan');
+  assert.equal(state.success(normalizeLimits(planQuota('free')), 3000).planType, 'free');
+  assert.equal(state.success(normalizeLimits(planQuota('unknown')), 4000).planType, null);
+});
+
+test('refresh, temporary failure and expiration preserve the plan with the last quota observation', () => {
+  const state = new UsageState();
+  state.success(normalizeLimits(planQuota('plus')), 0);
+  const loading = state.begin(60000);
+  assert.equal(loading.status, 'loading');
+  assert.equal(loading.planType, 'plus');
+  const failed = state.failure(new Error('request_timeout'));
+  assert.equal(failed.status, 'stale');
+  assert.equal(failed.planType, 'plus');
+  assert.equal(failed.observedAt, '1970-01-01T00:00:00.000Z');
+  state.begin(STALE_AFTER_MS);
+  const expired = state.expire(STALE_AFTER_MS);
+  assert.equal(expired.status, 'stale');
+  assert.equal(expired.planType, 'plus');
+  assert.equal(expired.observedAt, failed.observedAt);
+});
+
+test('an unavailable quota read cannot introduce or replace a subscription plan', () => {
+  const state = new UsageState();
+  const missingQuota = normalizeLimits({ rateLimitsByLimitId: { codex: { planType: 'pro' } } });
+  assert.equal(missingQuota.planType, 'pro');
+  const first = state.success(missingQuota, 0);
+  assert.equal(first.status, 'unavailable');
+  assert.equal(first.reason, 'usage_unavailable');
+  assert.equal(first.planType, null);
+  state.success(normalizeLimits(planQuota('plus')), 1000);
+  const failed = state.success(missingQuota, 2000);
+  assert.equal(failed.status, 'stale');
+  assert.equal(failed.planType, 'plus');
+  assert.equal(failed.observedAt, '1970-01-01T00:00:01.000Z');
+});
+
+test('worker plan metadata uses the same rate-limit read without additional account RPCs or private fields', async () => {
+  const response = planQuota('plus');
+  response.accountId = 'private-account-A';
+  response.email = 'private-person@example.test';
+  response.token = 'secret-access-token';
+  const h = harness([response]);
+  await h.worker.setActive(true);
+  assert.equal(h.states.at(-1).planType, 'plus');
+  assert.deepEqual(h.methods, ['account/rateLimits/read']);
+  assert.equal(/private-account|private-person|secret-access-token|email|token/.test(JSON.stringify(h.states)), false);
+  await h.worker.stop();
+});
+
 test('polling pauses in background and resumes only when a new read is due', async () => {
   const h = harness([quota(), quota(30), quota(35)]);
   assert.equal(h.states[0].status, 'loading');
@@ -164,13 +224,49 @@ test('transport failure is stale and a later retry reconnects to a new client', 
 });
 
 test('an auth change clears cached values instead of reusing the previous account quota', async () => {
-  const h = harness([quota()]);
+  const h = harness([planQuota('plus')]);
   await h.worker.setActive(true);
+  assert.equal(h.states.at(-1).planType, 'plus');
   h.clients[0].lines.emit('line', JSON.stringify({ method: 'account/updated', params: { authMode: null } }));
   assert.equal(h.states.at(-1).reason, 'account_changed');
   assert.equal(h.states.at(-1).status, 'unavailable');
   assert.deepEqual(h.states.at(-1).windows, []);
   assert.equal(h.states.at(-1).observedAt, null);
+  assert.equal(h.states.at(-1).planType, null);
+  await h.worker.stop();
+});
+
+test('a different response account ID clears the old plan before an unavailable new quota', async () => {
+  const h = harness([
+    { ...planQuota('plus'), accountId: 'private-account-A' },
+    { accountId: 'private-account-B', rateLimitsByLimitId: { codex: { planType: 'pro' } } },
+  ]);
+  await h.worker.setActive(true);
+  h.advance(60000);
+  await h.worker.tick();
+  assert.equal(h.states.at(-1).status, 'unavailable');
+  assert.equal(h.states.at(-1).planType, null);
+  assert.deepEqual(h.states.at(-1).windows, []);
+  assert.equal(JSON.stringify(h.states).includes('private-account'), false);
+  assert.deepEqual(h.methods, ['account/rateLimits/read', 'account/rateLimits/read']);
+  await h.worker.stop();
+});
+
+test('an in-flight reply from before an auth change cannot restore the previous account plan', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const h = harness([planQuota('plus'), () => pending]);
+  await h.worker.setActive(true);
+  h.advance(60000);
+  const refreshing = h.worker.tick();
+  await new Promise(resolve => setImmediate(resolve));
+  h.clients[0].lines.emit('line', JSON.stringify({ method: 'account/updated', params: { authMode: null } }));
+  release(planQuota('pro'));
+  await refreshing;
+  assert.equal(h.states.at(-1).status, 'unavailable');
+  assert.equal(h.states.at(-1).reason, 'account_changed');
+  assert.equal(h.states.at(-1).planType, null);
+  assert.deepEqual(h.states.at(-1).windows, []);
   await h.worker.stop();
 });
 

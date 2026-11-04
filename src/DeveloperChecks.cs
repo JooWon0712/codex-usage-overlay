@@ -23,6 +23,7 @@ namespace PersonalUsageOverlay
             BadgeLayoutChecks.Run(checks);
             UsagePresentationChecks.Run(checks);
             PreviewPresentationChecks.Run(checks);
+            PlanPresentationChecks.Run(checks);
             PositionAdjustmentChecks.Run(checks);
             BadgeZOrderChecks.Run(checks);
             SettingsBindingChecks.Run(checks);

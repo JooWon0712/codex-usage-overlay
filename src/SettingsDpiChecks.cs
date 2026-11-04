@@ -179,7 +179,7 @@ namespace PersonalUsageOverlay
             for (int index = 0; index < buttons.Length; index++)
                 result &= buttons[index].Bounds == Scaled(20 + index * 284, 96, 276, 30, scale)
                     && Near(buttons[index].ScaleFactor, scale) && Near(buttons[index].Font.Size, 12 * scale);
-            foreach (var key in new[] { "resetChoice", "countdownChoice" })
+            foreach (var key in new[] { "resetChoice", "countdownChoice", "planChoice" })
             {
                 var choice = Field<ThemedCheckBox>(window, key);
                 result &= Near(choice.ScaleFactor, scale) && Near(choice.Font.Size, 14 * scale);

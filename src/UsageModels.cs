@@ -62,7 +62,7 @@ namespace PersonalUsageOverlay
 
     public class UsageState
     {
-        public string type, status, observedAt, attemptedAt, reason;
+        public string type, status, observedAt, attemptedAt, reason, planType;
         public List<LimitWindow> windows = new List<LimitWindow>();
     }
 

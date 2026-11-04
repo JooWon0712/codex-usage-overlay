@@ -263,7 +263,7 @@ namespace PersonalUsageOverlay
                     }
                     else if (element.Key == "updated")
                     {
-                        text = TextOr(presentation == null ? null : presentation.DetailText, "연결 대기");
+                        text = TextOr(presentation == null ? null : presentation.BadgeDetailText(normalized.ShowPlan), "연결 대기");
                         color = stateColor;
                     }
                     else if (element.Key == "weekly-reset")

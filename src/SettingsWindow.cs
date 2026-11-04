@@ -14,7 +14,7 @@ namespace PersonalUsageOverlay
         private readonly ThemedButton[] pageButtons = new ThemedButton[2];
         private Panel[] pages;
         private readonly BadgePreview preview = new BadgePreview();
-        private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox();
+        private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox(), planChoice = new ThemedCheckBox();
         private readonly ThemedComboBox positionChoice = new ThemedComboBox(), themeChoice = new ThemedComboBox();
         private readonly ThemedNumericUpDown x = new ThemedNumericUpDown(), y = new ThemedNumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
@@ -69,6 +69,10 @@ namespace PersonalUsageOverlay
             transparencyChoice.SetBounds(16,220,520,30); AddUi(overlayPage,transparencyChoice);
             AddLabel(overlayPage, "추가 항목 표시", 16, 262, 520, 24, 14, true);
             AddOption(resetChoice, "주간 초기화 날짜 · 시각", 294);
+            resetChoice.Width = 268;
+            AddOption(planChoice, "구독 요금제", 294);
+            planChoice.SetBounds(296, 294, 240, 30);
+            planChoice.AccessibleDescription = "연결된 Codex 계정에서 확인한 요금제 종류를 갱신 시각 옆에 표시합니다.";
             AddOption(countdownChoice, "초기화 디데이", 330);
             AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 366, 520, 22, 11, false);
             overlayPage.AutoScroll = true;
@@ -99,6 +103,7 @@ namespace PersonalUsageOverlay
 
             resetChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             countdownChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
+            planChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             transparencyChoice.ValueChanged += delegate { SaveDisplayOptions(); };
             positionChoice.SelectedIndexChanged += delegate { if (!updating && positionChoice.SelectedIndex >= 0) { app.SetPosition(positionChoice.SelectedIndex == 0 ? "sidebar" : Preferences.BelowTitle); LoadPreferences(); } };
             themeChoice.SelectedIndexChanged += delegate { if (!updating && themeChoice.SelectedIndex >= 0) { app.SetTheme(new[] { "codex", "system", "light", "dark" }[themeChoice.SelectedIndex]); UpdateTheme(); } };
@@ -133,7 +138,7 @@ namespace PersonalUsageOverlay
         private void ScaleInputs()
         {
             preview.UiScale = uiScale; transparencyChoice.ScaleFactor = uiScale;
-            foreach (var check in new[] { resetChoice, countdownChoice }) check.ScaleFactor = uiScale;
+            foreach (var check in new[] { resetChoice, countdownChoice, planChoice }) check.ScaleFactor = uiScale;
             foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor = uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
             foreach (var number in new[] { x, y }) number.ScaleFactor = uiScale;
         }
@@ -191,6 +196,7 @@ namespace PersonalUsageOverlay
                 preview.LayoutSettings = app.Prefs.BadgeLayout;
                 transparencyChoice.Value=preview.LayoutSettings.BackgroundTransparency / 10;
                 resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
+                planChoice.Checked = preview.LayoutSettings.ShowPlan;
             }
             finally { updating = false; }
             UpdatePreviewStatus();
@@ -201,6 +207,7 @@ namespace PersonalUsageOverlay
             if (updating) return;
             var layout = preview.LayoutSettings.Copy();
             layout.BackgroundTransparency=transparencyChoice.Value * 10;
+            layout.ShowPlan = planChoice.Checked;
             layout.Elements.Find(element => element.Key == "weekly-reset").Visible = resetChoice.Checked;
             layout.Elements.Find(element => element.Key == "countdown").Visible = countdownChoice.Checked;
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();

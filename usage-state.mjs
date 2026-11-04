@@ -17,7 +17,7 @@ export class UsageState {
   constructor() {
     this.state = {
       type: 'state', status: 'loading', observedAt: null,
-      attemptedAt: null, reason: null, windows: [],
+      attemptedAt: null, reason: null, planType: null, windows: [],
     };
     this.successAtMs = null;
   }
@@ -42,6 +42,8 @@ export class UsageState {
     this.state.observedAt = new Date(nowMs).toISOString();
     this.state.reason = null;
     // The normalizer has already removed identifiers and unrelated account fields.
+    // A fresh successful read without a plan clears the previous plan value.
+    this.state.planType = normalized.planType ?? null;
     this.state.windows = normalized.windows.map(window => ({ ...window }));
     return this.snapshot();
   }
@@ -65,6 +67,7 @@ export class UsageState {
     this.successAtMs = null;
     this.state.status = 'unavailable';
     this.state.observedAt = null;
+    this.state.planType = null;
     this.state.windows = [];
     this.state.reason = safeReason(reason);
     return this.snapshot();
