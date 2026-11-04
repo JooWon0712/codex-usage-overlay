@@ -180,6 +180,23 @@ function Initialize-CuoSettings {
     try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
 }
 
+function Remove-CuoInstallWorkDirectory {
+    param([Parameter(Mandatory=$true)][string]$Path, [Parameter(Mandatory=$true)][string]$BuildRoot)
+    $fullPath = Assert-CuoChildPath $Path $BuildRoot
+    if ([IO.Path]::GetFileName($fullPath) -notmatch '^install-(stage|backup)-[0-9a-f]{32}$') { throw 'Unexpected install work directory.' }
+    Assert-CuoNoReparsePoint $fullPath $BuildRoot
+    if (-not (Test-Path -LiteralPath $fullPath)) { return }
+    $allowed = $script:CuoPackageFiles + @('install-manifest.json', 'geometry-test.json')
+    $items = @(Get-ChildItem -LiteralPath $fullPath -Force)
+    foreach ($item in $items) {
+        if ($item.PSIsContainer -or $item.Name -notin $allowed) { throw 'Unexpected contents in install work directory; preserved for inspection.' }
+        Assert-CuoNoReparsePoint $item.FullName $BuildRoot
+    }
+    foreach ($item in $items) { Remove-Item -LiteralPath $item.FullName -Force }
+    # Delete only an empty directory. Never recurse into an unexpected child.
+    [IO.Directory]::Delete($fullPath, $false)
+}
+
 function Invoke-CuoInstall {
     param([switch]$LaunchAfterInstall)
     $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
@@ -233,6 +250,12 @@ function Invoke-CuoInstall {
             finally { $instance.Dispose() }
         }
         Invoke-CuoFileTransaction -Stage $stage -Destination $destination -Backup $backup -Files ($script:CuoPackageFiles + @('install-manifest.json'))
+        # File hashes are verified before temporary rollback copies are discarded.
+        # Previous application versions are recovered from Git, not retained EXEs.
+        foreach ($workDirectory in @($backup, $stage)) {
+            try { Remove-CuoInstallWorkDirectory -Path $workDirectory -BuildRoot $buildRoot }
+            catch { Write-Warning "Installation succeeded, but temporary files could not be removed: $workDirectory. $($_.Exception.Message)" }
+        }
     }
     catch { $failure = $_ }
     finally {

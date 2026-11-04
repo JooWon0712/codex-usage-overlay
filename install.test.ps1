@@ -100,6 +100,28 @@ try {
     try { Assert-CuoLeafNames @('worker.mjs','WORKER.MJS') } catch { $rejected = $true }
     Assert-InstallTest $rejected 'case-insensitive duplicate package name rejected'
 
+    $work = Join-Path $testRoot ('install-backup-' + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path $work
+    Write-TestText (Join-Path $work 'UsageOverlay.exe') 'temporary-rollback-copy'
+    Remove-CuoInstallWorkDirectory -Path $work -BuildRoot $testRoot
+    Assert-InstallTest (-not (Test-Path -LiteralPath $work)) 'completed install work directory removed'
+    Assert-InstallTest ([IO.File]::Exists((Join-Path $target 'UsageOverlay.exe'))) 'work cleanup preserves installed target'
+
+    $work = Join-Path $testRoot ('install-stage-' + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path $work
+    Write-TestText (Join-Path $work 'UsageOverlay.exe') 'temporary-build'
+    Write-TestText (Join-Path $work 'unrelated.txt') 'keep-me'
+    $rejected = $false
+    try { Remove-CuoInstallWorkDirectory -Path $work -BuildRoot $testRoot } catch { $rejected = $true }
+    Assert-InstallTest $rejected 'unexpected work contents block cleanup'
+    Assert-InstallTest ([IO.File]::Exists((Join-Path $work 'UsageOverlay.exe')) -and [IO.File]::Exists((Join-Path $work 'unrelated.txt'))) 'work contents checked before deleting any file'
+    $rejected = $false
+    try { Remove-CuoInstallWorkDirectory -Path $target -BuildRoot $testRoot } catch { $rejected = $true }
+    Assert-InstallTest $rejected 'non-work directory cleanup rejected'
+    $rejected = $false
+    try { Remove-CuoInstallWorkDirectory -Path $work -BuildRoot (Join-Path $testRoot 'other-root') } catch { $rejected = $true }
+    Assert-InstallTest $rejected 'work cleanup outside expected root rejected'
+
     # Dot-source mode cannot install even if the conflicting-option guard regresses.
     $rejected = $false
     try { . (Join-Path $PSScriptRoot 'install.ps1') -Launch -NoLaunch }
