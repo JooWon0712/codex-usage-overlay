@@ -14,18 +14,26 @@ namespace PersonalUsageOverlay
         public static void SelfTest(string output)
         {
             var checks = new Dictionary<string, bool>();
-            var p = new Preferences();
+            var defaults = new Preferences();
+            checks["below_title_is_default"] = defaults.Position == Preferences.BelowTitle;
+            checks["below_title_relative_to_client"] = OverlayLayout.CalculateBounds(new Rectangle(100, 200, 1200, 800), 1, defaults) == new Rectangle(148, 256, 224, 46);
+            checks["below_title_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560, -200, 2000, 1200), 1.5f, defaults) == new Rectangle(-2488, -116, 336, 69);
+            var p = new Preferences { Position = "sidebar" };
             var normal = OverlayLayout.CalculateBounds(new Rectangle(100, 200, 1200, 800), 1, p);
             checks["sidebar_relative_to_client"] = normal == new Rectangle(164, 918, 224, 46);
             var negative = OverlayLayout.CalculateBounds(new Rectangle(-2560, -200, 2000, 1200), 1.5f, p);
             checks["mixed_dpi_negative_monitor"] = negative == new Rectangle(-2464, 877, 336, 69);
-            p.Position = "title";
-            p.TitleX = 3900;
-            p.TitleY = 2900;
+            p.Position = Preferences.BelowTitle;
+            p.TitleBelowX = 80;
+            p.TitleBelowY = 64;
+            checks["below_title_manual_offsets_at_200_percent"] = OverlayLayout.CalculateBounds(new Rectangle(100, 200, 1200, 800), 2, p) == new Rectangle(260, 328, 448, 92);
+            p.TitleBelowX = 3900;
+            p.TitleBelowY = 2900;
             var small = OverlayLayout.CalculateBounds(new Rectangle(-900, 0, 600, 400), 2, p);
-            checks["title_clamped_inside_window"] = small == new Rectangle(-748, 308, 448, 92);
+            checks["below_title_clamped_inside_window"] = small == new Rectangle(-748, 308, 448, 92);
             var tiny = OverlayLayout.CalculateBounds(new Rectangle(0, 0, 100, 30), 1, p);
             checks["tiny_window_stays_inside"] = tiny == new Rectangle(0, 0, 100, 30);
+            CheckPreferences(checks);
             RuntimeResolverChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
@@ -96,6 +104,28 @@ namespace PersonalUsageOverlay
             if (output != null)
                 File.WriteAllText(output, text, new UTF8Encoding(false));
             Environment.ExitCode = passed ? 0 : 1;
+        }
+
+        private static void CheckPreferences(Dictionary<string, bool> checks)
+        {
+            var json = new JavaScriptSerializer();
+            var legacy = json.Deserialize<Preferences>("{\"Position\":\"title\",\"SidebarX\":88,\"SidebarY\":94,\"TitleX\":560,\"TitleY\":48}");
+            legacy.NormalizePosition();
+            checks["legacy_title_moves_below_without_old_offsets"] = legacy.Position == Preferences.BelowTitle && legacy.TitleBelowX == 48 && legacy.TitleBelowY == 56;
+            checks["legacy_title_keeps_sidebar_coordinates"] = legacy.SidebarX == 88 && legacy.SidebarY == 94;
+            var sidebar = json.Deserialize<Preferences>("{\"Position\":\"sidebar\",\"SidebarX\":112,\"SidebarY\":98,\"TitleX\":560,\"TitleY\":48}");
+            sidebar.NormalizePosition();
+            checks["legacy_sidebar_selection_and_offsets_preserved"] = sidebar.Position == "sidebar" && sidebar.SidebarX == 112 && sidebar.SidebarY == 98;
+            checks["legacy_sidebar_gets_new_below_title_defaults"] = sidebar.TitleBelowX == 48 && sidebar.TitleBelowY == 56;
+            var custom = new Preferences { TitleBelowX = 96, TitleBelowY = 88 };
+            var restored = json.Deserialize<Preferences>(json.Serialize(custom));
+            restored.NormalizePosition();
+            checks["below_title_custom_coordinates_round_trip"] = restored.Position == Preferences.BelowTitle && restored.TitleBelowX == 96 && restored.TitleBelowY == 88;
+            restored.ResetCurrentPosition();
+            checks["below_title_reset_uses_new_defaults"] = restored.TitleBelowX == 48 && restored.TitleBelowY == 56;
+            var invalid = new Preferences { Position = null };
+            invalid.NormalizePosition();
+            checks["unknown_position_defaults_below_title"] = invalid.Position == Preferences.BelowTitle;
         }
 
         public static void RenderSamples(string directory)

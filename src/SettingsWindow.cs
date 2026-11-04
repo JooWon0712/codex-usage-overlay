@@ -36,7 +36,7 @@ namespace PersonalUsageOverlay
             sidebar.Text = "사이드바";
             sidebar.SetBounds(24, 261, 180, 27);
             Controls.Add(sidebar);
-            title.Text = "세션 제목 옆";
+            title.Text = "세션 제목 아래";
             title.SetBounds(222, 261, 200, 27);
             Controls.Add(title);
             AddLabel("가로: 창 왼쪽에서", 24, 307, 180, 24, 9, false);
@@ -54,7 +54,7 @@ namespace PersonalUsageOverlay
             y.Increment = 4;
             y.SetBounds(222, 335, 200, 28);
             Controls.Add(y);
-            AddLabel("위치는 화면 배율에 맞춰 조정됩니다. 긴 제목은 가로 값을 보정하세요.", 24, 375, 410, 35, 8, false);
+            AddLabel("창 콘텐츠 영역 기준 위치입니다. 제목 아래에 맞춰 가로·세로를 보정하세요.", 24, 375, 410, 35, 8, false);
             AddButton("기본 위치", 24, 418, 94, 31, delegate
             {
                 app.ResetPosition();
@@ -89,7 +89,7 @@ namespace PersonalUsageOverlay
             {
                 if (!updating && title.Checked)
                 {
-                    app.SetPosition("title");
+                    app.SetPosition(Preferences.BelowTitle);
                 }
             };
             x.ValueChanged += delegate
@@ -152,8 +152,8 @@ namespace PersonalUsageOverlay
             bool side = app.Prefs.Position == "sidebar";
             sidebar.Checked = side;
             title.Checked = !side;
-            x.Value = Math.Max(0, Math.Min(4000, side ? app.Prefs.SidebarX : app.Prefs.TitleX));
-            y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.SidebarY : app.Prefs.TitleY));
+            x.Value = Math.Max(0, Math.Min(4000, side ? app.Prefs.SidebarX : app.Prefs.TitleBelowX));
+            y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.SidebarY : app.Prefs.TitleBelowY));
             vertical.Text = side ? "세로: 창 아래에서" : "세로: 창 위에서";
             updating = false;
         }

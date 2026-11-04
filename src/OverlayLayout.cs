@@ -11,9 +11,10 @@ namespace PersonalUsageOverlay
         {
             int width = Math.Min(client.Width, (int)Math.Round(BadgeWidth * scale));
             int height = Math.Min(client.Height, (int)Math.Round(BadgeHeight * scale));
-            bool sidebar = preferences.Position != "title";
-            int left = client.Left + (int)Math.Round((sidebar ? preferences.SidebarX : preferences.TitleX) * scale);
-            int top = sidebar ? client.Bottom - (int)Math.Round(preferences.SidebarY * scale) : client.Top + (int)Math.Round(preferences.TitleY * scale);
+            bool sidebar = preferences.Position == "sidebar";
+            int left = client.Left + (int)Math.Round((sidebar ? preferences.SidebarX : preferences.TitleBelowX) * scale);
+            int top = sidebar ? client.Bottom - (int)Math.Round(preferences.SidebarY * scale)
+                : client.Top + (int)Math.Round(preferences.TitleBelowY * scale);
             left = Math.Max(client.Left, Math.Min(left, client.Right - width));
             top = Math.Max(client.Top, Math.Min(top, client.Bottom - height));
             return new Rectangle(left, top, width, height);

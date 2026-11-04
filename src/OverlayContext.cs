@@ -66,8 +66,7 @@ namespace PersonalUsageOverlay
                 {
                 }
 
-                if (Prefs.Position != "title")
-                    Prefs.Position = "sidebar";
+                Prefs.NormalizePosition();
                 runtime = LoadRuntime();
                 settings = new SettingsWindow(this);
                 // The taskbar window owns the application's lifetime. Minimizing does not close it.
@@ -427,15 +426,16 @@ namespace PersonalUsageOverlay
         public void SetPosition(string position)
         {
             Prefs.Position = position;
+            Prefs.NormalizePosition();
             ApplyPreferences(true);
         }
 
         public void SetCoordinates(int left, int vertical)
         {
-            if (Prefs.Position == "title")
+            if (Prefs.Position == Preferences.BelowTitle)
             {
-                Prefs.TitleX = left;
-                Prefs.TitleY = vertical;
+                Prefs.TitleBelowX = left;
+                Prefs.TitleBelowY = vertical;
             }
             else
             {
@@ -448,17 +448,7 @@ namespace PersonalUsageOverlay
 
         public void ResetPosition()
         {
-            if (Prefs.Position == "title")
-            {
-                Prefs.TitleX = 560;
-                Prefs.TitleY = 48;
-            }
-            else
-            {
-                Prefs.SidebarX = 64;
-                Prefs.SidebarY = 82;
-            }
-
+            Prefs.ResetCurrentPosition();
             ApplyPreferences();
         }
 

@@ -5,8 +5,31 @@ namespace PersonalUsageOverlay
 {
     public class Preferences
     {
-        public string Position = "sidebar";
-        public int SidebarX = 64, SidebarY = 82, TitleX = 560, TitleY = 48;
+        internal const string BelowTitle = "title-below";
+        internal const int DefaultTitleBelowX = 48, DefaultTitleBelowY = 56;
+        public string Position = BelowTitle;
+        public int SidebarX = 64, SidebarY = 82;
+        public int TitleBelowX = DefaultTitleBelowX, TitleBelowY = DefaultTitleBelowY;
+
+        internal void NormalizePosition()
+        {
+            if (Position != "sidebar" && Position != BelowTitle)
+                Position = BelowTitle;
+        }
+
+        internal void ResetCurrentPosition()
+        {
+            if (Position == "sidebar")
+            {
+                SidebarX = 64;
+                SidebarY = 82;
+            }
+            else
+            {
+                TitleBelowX = DefaultTitleBelowX;
+                TitleBelowY = DefaultTitleBelowY;
+            }
+        }
     }
 
     public class RuntimePaths
