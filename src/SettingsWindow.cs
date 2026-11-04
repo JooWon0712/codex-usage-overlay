@@ -24,6 +24,7 @@ namespace PersonalUsageOverlay
         private readonly bool previewMode;
         private bool updating, problemExpanded;
         private float uiScale = 1;
+        internal bool IsPositionPageSelected { get; private set; }
 
         public SettingsWindow(ISettingsHost owner) : this(owner, null) { }
         internal SettingsWindow(ISettingsHost owner, float? previewScale)
@@ -32,7 +33,8 @@ namespace PersonalUsageOverlay
             previewMode = previewScale.HasValue;
             Text = "Codex Usage Overlay";
             ClientSize = new Size(600, 582);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            ShowIcon = true; Icon = SystemIcons.Application;
             MaximizeBox = false; MinimizeBox = true; ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
@@ -78,6 +80,7 @@ namespace PersonalUsageOverlay
             AddNumber(positionPage, x, "가로 위치", 24, 158, 180, -4000, 4000);
             AddNumber(positionPage, y, "세로 위치", 240, 158, 184, 0, 3000);
             AddButton(positionPage, "기본 위치", 24, 204, 110, delegate { app.ResetPosition(); LoadPreferences(); });
+            AddLabel(positionPage, "조정 중 앱에 표시 · 설정 창이 겹치면 옆으로 옮기세요.", 24, 242, 508, 20, 11, false);
             AddLabel(positionPage, "테마", 24, 264, 508, 24, 12, true);
             AddChoice(positionPage, themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 24, 294, 400);
             themeStatus.SetBounds(24, 334, 508, 36); AddUi(positionPage, themeStatus);
@@ -198,6 +201,7 @@ namespace PersonalUsageOverlay
         private void SelectPage(int index)
         {
             if (index < 0 || index >= pages.Length) return;
+            IsPositionPageSelected = index == 1;
             for (int current = 0; current < pages.Length; current++)
             {
                 pages[current].Visible = current == index;

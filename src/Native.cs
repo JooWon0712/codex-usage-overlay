@@ -24,6 +24,8 @@ namespace PersonalUsageOverlay
         [DllImport("user32.dll")]
         public static extern IntPtr GetAncestor(IntPtr h, uint flags);
         [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr h, uint command);
+        [DllImport("user32.dll")]
         public static extern bool IsWindow(IntPtr h);
         [DllImport("user32.dll")]
         public static extern bool IsWindowVisible(IntPtr h);

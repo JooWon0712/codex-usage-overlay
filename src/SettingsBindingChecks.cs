@@ -49,6 +49,11 @@ namespace PersonalUsageOverlay
                 checks["settings_binding_only_overlay_and_position_theme_pages_remain"] = Field<ThemedButton[]>(window, "pageButtons").Length == 2
                     && Field<Panel[]>(window, "pages").Length == 2
                     && typeof(SettingsWindow).GetField("indicatorChoice", BindingFlags.Instance | BindingFlags.NonPublic) == null;
+                checks["settings_position_adjustment_is_enabled_only_on_position_page"] = !window.IsPositionPageSelected;
+                window.SelectPreviewPage(1);
+                checks["settings_position_page_enables_adjustment_even_without_coordinate_change"] = window.IsPositionPageSelected;
+                window.SelectPreviewPage(0);
+                checks["settings_leaving_position_page_ends_adjustment"] = !window.IsPositionPageSelected;
 
                 reset.Checked = false;
                 checks["settings_binding_reset_date_off_keeps_inline_countdown_at_compact_height"] = OptionsMatch(preview, host, false, true)

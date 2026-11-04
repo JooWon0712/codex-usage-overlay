@@ -23,6 +23,8 @@ namespace PersonalUsageOverlay
             BadgeLayoutChecks.Run(checks);
             UsagePresentationChecks.Run(checks);
             PreviewPresentationChecks.Run(checks);
+            PositionAdjustmentChecks.Run(checks);
+            BadgeZOrderChecks.Run(checks);
             SettingsBindingChecks.Run(checks);
             HeadlineLayoutChecks.Run(checks);
             ThemedPaintChecks.Run(checks);
@@ -91,7 +93,7 @@ namespace PersonalUsageOverlay
             bool passed = true;
             foreach (bool result in checks.Values)
                 passed &= result;
-            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks });
+            var text = new JavaScriptSerializer().Serialize(new { passed = passed, checks = checks, windowOrder = BadgeZOrderChecks.Observation });
             if (output != null)
                 File.WriteAllText(output, text, new UTF8Encoding(false));
             Environment.ExitCode = passed ? 0 : 1;
@@ -214,6 +216,18 @@ namespace PersonalUsageOverlay
                             }
                             window.Hide();
                         }
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                foreach (float scale in new[] { 1f, 1.5f, 2f })
+                    using (var window = new SettingsWindow(new SettingsPreviewHost(theme), scale))
+                    {
+                        window.ShowInTaskbar=false;window.StartPosition=FormStartPosition.Manual;window.Location=new Point(-32000,-32000);window.Opacity=0;window.Show();
+                        using (var bitmap = new Bitmap(window.Width, window.Height))
+                        {
+                            window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.Size));
+                            bitmap.Save(Path.Combine(directory,(theme.IsDark?"dark-":"light-")+"native-caption-"+(int)(scale*100)+".png"),System.Drawing.Imaging.ImageFormat.Png);
+                        }
+                        window.Hide();
+                    }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 for (int mask = 0; mask < 4; mask++)
                     foreach (float scale in new[] { 1f, 1.5f, 2f })

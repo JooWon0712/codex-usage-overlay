@@ -52,6 +52,8 @@ namespace PersonalUsageOverlay
         private IntPtr target = IntPtr.Zero;
         private readonly Dictionary<uint, Tuple<bool, DateTime>> processCache = new Dictionary<uint, Tuple<bool, DateTime>>();
         private bool active;
+        private bool adjustingPosition;
+        private bool badgeWasAdjustment;
         private Rectangle lastBounds;
         private readonly string diagnostics;
         private DateTime lastDiagnostic = DateTime.MinValue, workerRestartAfter = DateTime.MinValue;
@@ -237,6 +239,28 @@ namespace PersonalUsageOverlay
             }
         }
 
+        private bool IsAvailableTarget(IntPtr hwnd)
+        {
+            return hwnd != IntPtr.Zero && Native.IsWindow(hwnd) && Native.IsWindowVisible(hwnd)
+                && !Native.IsIconic(hwnd) && !IsCloaked(hwnd) && TargetProcess(hwnd);
+        }
+
+        private bool FindAdjustmentTarget()
+        {
+            if (IsAvailableTarget(target)) return true;
+            target = IntPtr.Zero;
+            Native.EnumWindows(delegate(IntPtr hwnd, IntPtr unused)
+            {
+                if (Native.GetAncestor(hwnd, 3) == hwnd && IsAvailableTarget(hwnd))
+                {
+                    target = hwnd;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            return target != IntPtr.Zero;
+        }
+
         private void Tick()
         {
             if (quitting)
@@ -248,12 +272,19 @@ namespace PersonalUsageOverlay
             var root = Native.GetAncestor(foreground, 3);
             if (root == IntPtr.Zero)
                 root = foreground;
-            bool show = root != IntPtr.Zero && Native.IsWindowVisible(root) && !Native.IsIconic(root) && !IsCloaked(root) && TargetProcess(root);
-            if (show)
+            bool codexForeground = IsAvailableTarget(root);
+            if (codexForeground)
                 target = root;
-            if (show != active)
+            bool settingsNormal = settings != null && !settings.IsDisposed && settings.Visible && settings.WindowState == FormWindowState.Normal;
+            bool settingsForeground = settingsNormal && settings.IsHandleCreated && foreground == settings.Handle;
+            bool positionPage = settingsNormal && settings.IsPositionPageSelected;
+            bool adjustmentTarget = settingsForeground && positionPage && FindAdjustmentTarget();
+            adjustingPosition = !codexForeground && adjustmentTarget;
+            bool show = PositionAdjustmentPolicy.CanShow(codexForeground, settingsForeground, positionPage, settingsNormal, adjustmentTarget);
+            // Adjustment is display-only. Keep regular account polling tied to Codex focus.
+            if (codexForeground != active)
             {
-                active = show;
+                active = codexForeground;
                 Send(new { command = "active", value = active });
             }
 
@@ -285,13 +316,18 @@ namespace PersonalUsageOverlay
                             lastBounds = bounds;
                         }
 
-                        if (!badge.Visible)
+                        bool reveal = !badge.Visible || badgeWasAdjustment != adjustingPosition;
+                        try
                         {
-                            badge.Show();
-                            Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40);
+                            if (reveal) badge.Opacity = 0;
+                            if (!badge.Visible) badge.Show();
+                            bool placed = adjustingPosition ? BadgeZOrder.Place(badge.Handle, target, bounds)
+                                : Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40);
+                            if (!placed) badge.Hide();
+                            badgeWasAdjustment = adjustingPosition;
                         }
-                        else if (changed)
-                            Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10);
+                        catch { badge.Hide(); }
+                        finally { if (reveal) badge.Opacity = 1; }
                     }
                 }
                 else
@@ -600,6 +636,7 @@ namespace PersonalUsageOverlay
                     capturedAt = DateTime.UtcNow.ToString("o"),
                     visible = badge.Visible,
                     active = active,
+                    adjustingPosition = adjustingPosition,
                     position = Prefs.Position,
                     targetPid = targetPid,
                     targetHandle = target.ToInt64(),
