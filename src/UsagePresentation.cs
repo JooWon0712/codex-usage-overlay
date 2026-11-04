@@ -1,23 +1,24 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Globalization;
 
 namespace PersonalUsageOverlay
 {
+    internal enum UsageTone { Normal, Attention, Low }
+
     // Formats an observation without reading an account or touching any window.
     internal sealed class UsagePresentation
     {
         public readonly string MainText, DetailText, Details;
         public readonly double? LowWeeklyRemaining;
-        public readonly Color StateColor;
-        private UsagePresentation(string mainText, string detailText, string details, double? lowWeeklyRemaining, Color stateColor)
+        public readonly UsageTone Tone;
+        private UsagePresentation(string mainText, string detailText, string details, double? lowWeeklyRemaining, UsageTone tone)
         {
             MainText = mainText;
             DetailText = detailText;
             Details = details;
             LowWeeklyRemaining = lowWeeklyRemaining;
-            StateColor = stateColor;
+            Tone = tone;
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now)
@@ -49,8 +50,8 @@ namespace PersonalUsageOverlay
             string details = "연결된 Codex 계정의 한도\n" + detailText + "\n" + string.Join("\n", resets.ToArray());
             if (state.reason != null)
                 details += "\n상태: " + FriendlyReason(state.reason);
-            var color = lowWeekly.HasValue ? Color.FromArgb(242, 100, 112) : status == "ok" && parts.Count > 0 ? Color.FromArgb(127, 199, 174) : Color.FromArgb(238, 183, 98);
-            return new UsagePresentation(mainText, detailText, details, lowWeekly, color);
+            var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
+            return new UsagePresentation(mainText, detailText, details, lowWeekly, tone);
         }
 
         private static string WindowLabel(LimitWindow window)

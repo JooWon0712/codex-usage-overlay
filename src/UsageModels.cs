@@ -10,6 +10,7 @@ namespace PersonalUsageOverlay
         public string Position = BelowTitle;
         public int SidebarX = 64, SidebarY = 82;
         public int TitleOffsetX = DefaultTitleOffsetX, TitleGap = DefaultTitleGap;
+        public string ThemeMode = "codex";
 
         internal void NormalizePosition()
         {
@@ -17,6 +18,8 @@ namespace PersonalUsageOverlay
                 Position = BelowTitle;
             TitleOffsetX = Math.Max(-4000, Math.Min(4000, TitleOffsetX));
             TitleGap = Math.Max(0, Math.Min(3000, TitleGap));
+            if (ThemeMode != "light" && ThemeMode != "dark" && ThemeMode != "system")
+                ThemeMode = "codex";
         }
 
         internal void ResetCurrentPosition()

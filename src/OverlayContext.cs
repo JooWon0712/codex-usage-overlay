@@ -11,7 +11,7 @@ using System.Windows.Forms;
 
 namespace PersonalUsageOverlay
 {
-    internal sealed class OverlayContext : ApplicationContext
+    internal sealed class OverlayContext : ApplicationContext, ISettingsHost
     {
         public Preferences Prefs = new Preferences();
         private bool quitting;
@@ -25,6 +25,15 @@ namespace PersonalUsageOverlay
         };
         private readonly Badge badge = new Badge();
         private readonly TitleAnchorTracker titleTracker = new TitleAnchorTracker();
+        private readonly ThemeTracker themeTracker = new ThemeTracker();
+        public VisualTheme Theme { get; private set; }
+        public string ThemeStatus { get; private set; }
+        private bool? darkTheme, highContrast;
+        private int contrastSignature;
+        private string themeSource = "pending";
+        Preferences ISettingsHost.Prefs { get { return Prefs; } }
+        string ISettingsHost.MainText { get { return MainText; } }
+        string ISettingsHost.Details { get { return Details; } }
         private TitleAnchorObservation titleAnchor;
         private string anchorStatus = "pending";
         private SettingsWindow settings;
@@ -83,6 +92,7 @@ namespace PersonalUsageOverlay
                 }
 
                 Prefs.NormalizePosition();
+                UpdateTheme();
                 runtime = LoadRuntime();
                 settings = new SettingsWindow(this);
                 // The taskbar window owns the application's lifetime. Minimizing does not close it.
@@ -223,6 +233,7 @@ namespace PersonalUsageOverlay
         {
             if (quitting)
                 return;
+            UpdateTheme();
             var foreground = Native.GetForegroundWindow();
             var root = Native.GetAncestor(foreground, 3);
             if (root == IntPtr.Zero)
@@ -293,12 +304,12 @@ namespace PersonalUsageOverlay
             var presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
             MainText = presentation.MainText;
             Details = presentation.Details;
-            if (badge.MainText != presentation.MainText || badge.DetailText != presentation.DetailText || badge.LowWeeklyRemaining != presentation.LowWeeklyRemaining || badge.StateColor != presentation.StateColor)
+            if (badge.MainText != presentation.MainText || badge.DetailText != presentation.DetailText || badge.LowWeeklyRemaining != presentation.LowWeeklyRemaining || badge.Tone != presentation.Tone)
             {
                 badge.MainText = presentation.MainText;
                 badge.DetailText = presentation.DetailText;
                 badge.LowWeeklyRemaining = presentation.LowWeeklyRemaining;
-                badge.StateColor = presentation.StateColor;
+                badge.Tone = presentation.Tone;
                 badge.Invalidate();
             }
 
@@ -466,6 +477,33 @@ namespace PersonalUsageOverlay
             ApplyPreferences();
         }
 
+        public void SetTheme(string mode)
+        {
+            Prefs.ThemeMode = mode;
+            Prefs.NormalizePosition();
+            ApplyPreferences();
+        }
+
+        private void UpdateTheme()
+        {
+            bool manual = Prefs.ThemeMode == "light" || Prefs.ThemeMode == "dark";
+            var value = manual ? new ThemeSnapshot { IsDark = Prefs.ThemeMode == "dark", Status = Prefs.ThemeMode == "dark" ? "다크 · 직접 선택" : "라이트 · 직접 선택", Source = "manual" }
+                : themeTracker.GetOrRequest(Prefs.ThemeMode != "system");
+            bool contrast = SystemInformation.HighContrast;
+            int signature = contrast ? unchecked(SystemColors.Window.ToArgb() * 397 ^ SystemColors.WindowText.ToArgb() * 17 ^ SystemColors.Highlight.ToArgb()) : 0;
+            if (Theme == null || darkTheme != value.IsDark || highContrast != contrast || contrastSignature != signature)
+            {
+                darkTheme = value.IsDark;
+                highContrast = contrast;
+                contrastSignature = signature;
+                Theme = VisualTheme.For(value.IsDark, contrast);
+                badge.Theme = Theme;
+                badge.Invalidate();
+            }
+            ThemeStatus = contrast ? "Windows 고대비 색상 사용" : value.Status;
+            themeSource = contrast ? "high_contrast" : value.Source;
+        }
+
         public void ResetPosition()
         {
             Prefs.ResetCurrentPosition();
@@ -559,6 +597,9 @@ namespace PersonalUsageOverlay
                     reason = state.reason,
                     lowWeeklyRemaining = badge.LowWeeklyRemaining,
                     warningThresholdPercent = WeeklyQuotaWarning.ThresholdPercent,
+                    themeMode = Prefs.ThemeMode,
+                    themeSource = themeSource,
+                    darkTheme = Theme.IsDark,
                     titleAnchorStatus = anchorStatus,
                     titleAnchorObservedAt = titleAnchor != null ? titleAnchor.ObservedAtUtc.ToString("o") : null,
                     titleBounds = titleAnchor != null ? new { x=titleAnchor.TitleBounds.X,y=titleAnchor.TitleBounds.Y,width=titleAnchor.TitleBounds.Width,height=titleAnchor.TitleBounds.Height } : null,
@@ -625,6 +666,7 @@ namespace PersonalUsageOverlay
                 timer.Stop();
             });
             TryCleanup(titleTracker.Dispose);
+            TryCleanup(themeTracker.Dispose);
             TryCleanup(delegate
             {
                 badge.Hide();

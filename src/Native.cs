@@ -53,6 +53,8 @@ namespace PersonalUsageOverlay
         public static extern bool UnhookWinEvent(IntPtr hook);
         [DllImport("dwmapi.dll")]
         public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int value, int size);
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int value, int size);
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
         public static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]

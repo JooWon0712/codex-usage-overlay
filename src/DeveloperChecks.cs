@@ -18,6 +18,8 @@ namespace PersonalUsageOverlay
             TitleAnchorTrackerChecks.Run(checks);
             CheckPreferences(checks);
             RuntimeResolverChecks.Run(checks);
+            ThemeReaderChecks.Run(checks);
+            ThemeChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {
@@ -176,7 +178,7 @@ namespace PersonalUsageOverlay
                     Main = "주간 75% 남음",
                     Detail = "갱신 12:34:56 · Codex 계정",
                     Low = (double?)null,
-                    Color = Color.FromArgb(127, 199, 174)
+                    Tone = UsageTone.Normal
                 },
                 new
                 {
@@ -184,7 +186,7 @@ namespace PersonalUsageOverlay
                     Main = "주간 14% 남음",
                     Detail = "주간 한도 부족 · 갱신 12:34:56",
                     Low = (double?)14,
-                    Color = Color.FromArgb(242, 100, 112)
+                    Tone = UsageTone.Low
                 },
                 new
                 {
@@ -192,7 +194,7 @@ namespace PersonalUsageOverlay
                     Main = "주간 0% 남음",
                     Detail = "주간 한도 소진 · 갱신 12:34:56",
                     Low = (double?)0,
-                    Color = Color.FromArgb(242, 100, 112)
+                    Tone = UsageTone.Low
                 },
                 new
                 {
@@ -200,9 +202,10 @@ namespace PersonalUsageOverlay
                     Main = "이전 값 · 주간 14% 남음",
                     Detail = "갱신 실패 · 마지막 12:34:56",
                     Low = (double?)null,
-                    Color = Color.FromArgb(238, 183, 98)
+                    Tone = UsageTone.Attention
                 }
             };
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
             foreach (var sample in samples)
                 foreach (var scale in new[] { 1f, 1.5f, 2f })
                     using (var badge = new Badge
@@ -212,12 +215,31 @@ namespace PersonalUsageOverlay
                         MainText = sample.Main,
                         DetailText = sample.Detail,
                         LowWeeklyRemaining = sample.Low,
-                        StateColor = sample.Color
+                        Tone = sample.Tone,
+                        Theme = theme
                     })
                     using (var bitmap = new Bitmap(badge.Width, badge.Height))
                     {
                         badge.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
-                        bitmap.Save(Path.Combine(directory, sample.Name + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + sample.Name + "-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
+                    }
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+                foreach (float scale in new[] { 1f, 1.5f, 2f })
+                    using (var window = new SettingsWindow(new SettingsPreviewHost(theme), scale))
+                    using (var bitmap = new Bitmap(window.ClientSize.Width, window.ClientSize.Height))
+                    {
+                        // A transparent, off-screen fixture creates native child controls.
+                        // It never activates or starts the real app, account queries or settings writes.
+                        window.FormBorderStyle = FormBorderStyle.None;
+                        window.ShowInTaskbar = false;
+                        window.StartPosition = FormStartPosition.Manual;
+                        window.Location = new Point(-32000, -32000);
+                        window.Opacity = 0;
+                        window.Show();
+                        bitmap.SetResolution(96 * scale, 96 * scale);
+                        window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, window.ClientSize));
+                        window.Hide();
+                        bitmap.Save(Path.Combine(directory, (theme.IsDark ? "dark-" : "light-") + "settings-" + (int)(scale * 100) + ".png"), System.Drawing.Imaging.ImageFormat.Png);
                     }
         }
     }
