@@ -104,14 +104,15 @@ namespace PersonalUsageOverlay
 
         private RuntimePaths LoadRuntime()
         {
+            RuntimePaths configured = null;
             try
             {
-                return json.Deserialize<RuntimePaths>(File.ReadAllText(Path.Combine(folder, "runtime-paths.json")));
+                configured = json.Deserialize<RuntimePaths>(File.ReadAllText(Path.Combine(folder, "runtime-paths.json")));
             }
             catch
             {
-                return new RuntimePaths();
             }
+            return RuntimeResolver.Resolve(configured, folder, Environment.GetEnvironmentVariable("PATH"));
         }
 
         private void AddHook(uint min, uint max)

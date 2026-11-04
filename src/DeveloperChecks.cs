@@ -26,8 +26,7 @@ namespace PersonalUsageOverlay
             checks["title_clamped_inside_window"] = small == new Rectangle(-748, 308, 448, 92);
             var tiny = OverlayLayout.CalculateBounds(new Rectangle(0, 0, 100, 30), 1, p);
             checks["tiny_window_stays_inside"] = tiny == new Rectangle(0, 0, 100, 30);
-            checks["fixed_install_path_accepts_canonical_exe"] = AppIdentity.IsInstalledPath(AppIdentity.Executable);
-            checks["checkout_requires_installed_path"] = !AppIdentity.IsInstalledPath(Path.Combine(Path.GetTempPath(), "checkout", "UsageOverlay.exe"));
+            RuntimeResolverChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {

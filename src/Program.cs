@@ -3,8 +3,8 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.4.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.5.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.5.0.0")]
 [assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
 namespace PersonalUsageOverlay
 {
@@ -48,14 +48,6 @@ namespace PersonalUsageOverlay
                     Environment.ExitCode = 64;
                     return;
                 }
-            }
-
-            // Do not forward a development build to an older, potentially tray-enabled installation.
-            if (!AppIdentity.IsInstalledPath(Application.ExecutablePath))
-            {
-                MessageBox.Show("이 파일은 설치 경로 밖의 빌드입니다.\n고정 설치 폴더에 설치한 뒤 실행해 주세요.", "Codex 잔여 한도");
-                Environment.ExitCode = 5;
-                return;
             }
 
             using (var updateLock = new Mutex(false, AppIdentity.UpdateLock))
@@ -107,7 +99,7 @@ namespace PersonalUsageOverlay
                         catch
                         {
                             Environment.ExitCode = 1;
-                            MessageBox.Show("보조 프로그램을 시작하지 못했습니다. 설치 상태와 실행 파일을 확인해 주세요.", "Codex 잔여 한도");
+                            MessageBox.Show("보조 프로그램을 시작하지 못했습니다. 압축을 모두 풀었는지 실행 파일과 구성 파일을 확인해 주세요.", "Codex 잔여 한도");
                         }
                         finally
                         {
