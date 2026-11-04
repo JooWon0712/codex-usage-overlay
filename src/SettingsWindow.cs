@@ -8,9 +8,8 @@ namespace PersonalUsageOverlay
     internal sealed class SettingsWindow : Form
     {
         private readonly ISettingsHost app;
-        private readonly RadioButton sidebar = new RadioButton(), title = new RadioButton();
         private readonly NumericUpDown x = new NumericUpDown(), y = new NumericUpDown();
-        private readonly ComboBox themeChoice = new ComboBox();
+        private readonly ComboBox positionChoice = new ComboBox(), themeChoice = new ComboBox();
         private readonly Label horizontal = new Label(), vertical = new Label(), detail = new Label(), summary = new Label(), positionStatus = new Label(), themeStatus = new Label();
         private VisualTheme theme = VisualTheme.Dark;
         private float uiScale = 1;
@@ -42,18 +41,7 @@ namespace PersonalUsageOverlay
             detail.SetBounds(32, 145, 388, 80);
             Controls.Add(detail);
             AddLabel("표시 위치", 22, 242, 410, 23, 9, true);
-            sidebar.Text = "사이드바";
-            sidebar.AccessibleName = "사이드바";
-            sidebar.Appearance = Appearance.Button;
-            sidebar.TextAlign = ContentAlignment.MiddleLeft;
-            sidebar.SetBounds(24, 268, 180, 31);
-            Controls.Add(sidebar);
-            title.Text = "세션 제목 아래";
-            title.AccessibleName = "세션 제목 아래";
-            title.Appearance = Appearance.Button;
-            title.TextAlign = ContentAlignment.MiddleLeft;
-            title.SetBounds(222, 268, 200, 31);
-            Controls.Add(title);
+            AddChoice(positionChoice, "표시 위치", new[] { "사이드바", "세션 제목 아래" }, 24, 268, 398);
             positionStatus.SetBounds(24, 304, 398, 17);
             positionStatus.Font = new Font(Font.FontFamily, 10, FontStyle.Regular, GraphicsUnit.Pixel);
             Controls.Add(positionStatus);
@@ -75,14 +63,7 @@ namespace PersonalUsageOverlay
             Controls.Add(y);
             AddLabel("제목 위치에 맞춰 배치합니다. 필요하면 위치와 간격을 보정하세요.", 24, 391, 398, 27, 8, false);
             AddLabel("테마", 24, 426, 56, 24, 9, true);
-            themeChoice.AccessibleName = "테마";
-            themeChoice.DropDownStyle = ComboBoxStyle.DropDownList;
-            themeChoice.FlatStyle = FlatStyle.Flat;
-            themeChoice.DrawMode = DrawMode.OwnerDrawFixed;
-            themeChoice.Items.AddRange(new object[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" });
-            themeChoice.SetBounds(90, 422, 332, 28);
-            themeChoice.DrawItem += DrawThemeChoice;
-            Controls.Add(themeChoice);
+            AddChoice(themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 90, 422, 332);
             themeStatus.SetBounds(24, 455, 398, 18);
             themeStatus.Font = new Font(Font.FontFamily, 10, FontStyle.Regular, GraphicsUnit.Pixel);
             Controls.Add(themeStatus);
@@ -95,11 +76,14 @@ namespace PersonalUsageOverlay
             });
             AddButton("종료", 338, 482, 84, 32, delegate { app.Quit(); });
             AddLabel("최소화하면 표시를 유지합니다. X 또는 종료를 누르면 완전히 종료됩니다.", 24, 530, 398, 30, 8, false);
-            sidebar.CheckedChanged += delegate { UpdatePositionChoices(); if (!updating && sidebar.Checked) app.SetPosition("sidebar"); };
-            title.CheckedChanged += delegate { UpdatePositionChoices(); if (!updating && title.Checked) app.SetPosition(Preferences.BelowTitle); };
+            positionChoice.SelectedIndexChanged += delegate
+            {
+                if (!updating && positionChoice.SelectedIndex >= 0)
+                    app.SetPosition(positionChoice.SelectedIndex == 0 ? "sidebar" : Preferences.BelowTitle);
+            };
             themeChoice.SelectedIndexChanged += delegate
             {
-                if (!updating)
+                if (!updating && themeChoice.SelectedIndex >= 0)
                 {
                     app.SetTheme(new[] { "codex", "system", "light", "dark" }[themeChoice.SelectedIndex]);
                     UpdateTheme();
@@ -118,6 +102,7 @@ namespace PersonalUsageOverlay
                 ClientSize = new Size((int)Math.Round(460 * uiScale), (int)Math.Round(564 * uiScale));
             }
             themeChoice.ItemHeight = (int)Math.Round(25 * uiScale);
+            positionChoice.ItemHeight = (int)Math.Round(25 * uiScale);
             for (int index = 0; index < Controls.Count; index++) Controls[index].TabIndex = index;
             LoadPreferences();
             UpdateUsage();
@@ -139,6 +124,18 @@ namespace PersonalUsageOverlay
             Controls.Add(button);
         }
 
+        private void AddChoice(ComboBox choice, string label, string[] items, int left, int top, int width)
+        {
+            choice.AccessibleName = label;
+            choice.DropDownStyle = ComboBoxStyle.DropDownList;
+            choice.FlatStyle = FlatStyle.Flat;
+            choice.DrawMode = DrawMode.OwnerDrawFixed;
+            choice.Items.AddRange(items);
+            choice.SetBounds(left, top, width, 28);
+            choice.DrawItem += DrawChoice;
+            Controls.Add(choice);
+        }
+
         private void SaveCoordinates()
         {
             if (!updating) app.SetCoordinates((int)x.Value, (int)y.Value);
@@ -150,8 +147,7 @@ namespace PersonalUsageOverlay
             try
             {
                 bool side = app.Prefs.Position == "sidebar";
-                sidebar.Checked = side;
-                title.Checked = !side;
+                positionChoice.SelectedIndex = side ? 0 : 1;
                 x.Minimum = side ? 0 : -4000;
                 x.Value = Math.Max((int)x.Minimum, Math.Min(4000, side ? app.Prefs.SidebarX : app.Prefs.TitleOffsetX));
                 y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.SidebarY : app.Prefs.TitleGap));
@@ -160,30 +156,6 @@ namespace PersonalUsageOverlay
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
             }
             finally { updating = false; }
-            UpdatePositionChoices();
-        }
-
-        private void UpdatePositionChoices()
-        {
-            StylePositionChoice(sidebar, "사이드바");
-            StylePositionChoice(title, "세션 제목 아래");
-        }
-
-        private void StylePositionChoice(RadioButton choice, string label)
-        {
-            bool selected = choice.Checked;
-            bool contrast = SystemInformation.HighContrast;
-            Color selectedFill = contrast ? SystemColors.Highlight : theme.Pressed;
-            choice.Text = selected ? "✓ " + label : label;
-            choice.Padding = new Padding((int)Math.Round(10 * uiScale), 0, (int)Math.Round(6 * uiScale), 0);
-            choice.BackColor = selected ? selectedFill : theme.Surface;
-            choice.ForeColor = selected && contrast ? SystemColors.HighlightText : theme.Text;
-            choice.FlatAppearance.BorderColor = selected ? theme.Accent : theme.Border;
-            choice.FlatAppearance.BorderSize = Math.Max(1, (int)Math.Round((selected ? 2 : 1) * uiScale));
-            choice.FlatAppearance.CheckedBackColor = selectedFill;
-            choice.FlatAppearance.MouseOverBackColor = selected ? selectedFill : theme.Hover;
-            choice.FlatAppearance.MouseDownBackColor = selectedFill;
-            choice.Invalidate();
         }
 
         public void UpdateUsage()
@@ -216,8 +188,6 @@ namespace PersonalUsageOverlay
                 control.BackColor = control is Label ? Color.Transparent : theme.Background;
                 var button = control as ThemedButton;
                 if (button != null) button.Theme = theme;
-                var radio = control as RadioButton;
-                if (radio != null) { radio.FlatStyle = FlatStyle.Flat; radio.UseVisualStyleBackColor = false; }
                 if (control is NumericUpDown || control is ComboBox)
                 {
                     control.BackColor = theme.Surface;
@@ -225,7 +195,6 @@ namespace PersonalUsageOverlay
                 }
             }
             detail.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = theme.Muted;
-            UpdatePositionChoices();
             ApplyCaptionTheme();
             Invalidate(true);
         }
@@ -258,13 +227,18 @@ namespace PersonalUsageOverlay
             catch (EntryPointNotFoundException) { }
         }
 
-        private void DrawThemeChoice(object sender, DrawItemEventArgs e)
+        private void DrawChoice(object sender, DrawItemEventArgs e)
         {
-            if (e.Index < 0) return;
-            using (var brush = new SolidBrush((e.State & DrawItemState.Selected) != 0 ? theme.Hover : theme.Surface)) e.Graphics.FillRectangle(brush, e.Bounds);
+            var choice = (ComboBox)sender;
+            if (e.Index < 0 || e.Index >= choice.Items.Count) return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            bool contrast = SystemInformation.HighContrast;
+            Color fill = selected ? (contrast ? SystemColors.Highlight : theme.Hover) : theme.Surface;
+            Color text = selected && contrast ? SystemColors.HighlightText : theme.Text;
+            using (var brush = new SolidBrush(fill)) e.Graphics.FillRectangle(brush, e.Bounds);
             var bounds = e.Bounds;
             bounds.Inflate(-(int)(8 * uiScale), 0);
-            TextRenderer.DrawText(e.Graphics, themeChoice.Items[e.Index].ToString(), themeChoice.Font, bounds, theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextRenderer.DrawText(e.Graphics, choice.Items[e.Index].ToString(), choice.Font, bounds, text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             e.DrawFocusRectangle();
         }
 
