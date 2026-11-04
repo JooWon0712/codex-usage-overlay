@@ -10,7 +10,7 @@ namespace PersonalUsageOverlay
         string ThemeStatus { get; }
         VisualTheme Theme { get; }
         UsagePresentation Presentation { get; }
-        bool IsSample { get; }
+        System.DateTimeOffset StartedAt { get; }
         void SetPosition(string position);
         void SetCoordinates(int left, int vertical);
         void ResetPosition();

@@ -33,6 +33,29 @@ namespace PersonalUsageOverlay
             return Create(state, now, TimeZoneInfo.Local);
         }
 
+        // Settings preview only: a stable example tied to this process's launch.
+        // It never reads or replaces a live account observation and never expires.
+        public static UsagePresentation CreatePreview(DateTimeOffset startedAt)
+        {
+            return CreatePreview(startedAt, TimeZoneInfo.Local);
+        }
+
+        public static UsagePresentation CreatePreview(DateTimeOffset startedAt, TimeZoneInfo zone)
+        {
+            zone = zone ?? TimeZoneInfo.Local;
+            var windows = new List<LimitWindow>
+            {
+                new LimitWindow
+                {
+                    limitId = "codex", window = "primary", windowDurationMins = QuotaPeriods.WeeklyMinutes,
+                    remainingPercent = 96, resetsAt = startedAt.AddDays(7).ToUnixTimeSeconds()
+                }
+            };
+            var reset = WeeklyResetText(windows, startedAt, zone, true);
+            return new UsagePresentation("주간 96% 남음", "갱신 " + TimeText(startedAt.ToString("o", CultureInfo.InvariantCulture), zone) + " · 예시",
+                reset, "설정 미리보기용 예시 데이터", null, UsageTone.Normal, false, String.Empty);
+        }
+
         public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone)
         {
             state = state ?? new UsageState { status = "unavailable" };

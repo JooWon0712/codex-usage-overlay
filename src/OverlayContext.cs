@@ -17,7 +17,7 @@ namespace PersonalUsageOverlay
         private bool quitting;
         public string MainText = "한도 확인 중", Details = "공식 조회 연결을 준비하고 있습니다.";
         public UsagePresentation Presentation { get; private set; }
-        public bool IsSample { get { return false; } }
+        public DateTimeOffset StartedAt { get; private set; }
         private bool layoutSavePending;
         private DateTime layoutSaveAt;
         private readonly string folder = AppDomain.CurrentDomain.BaseDirectory;
@@ -74,8 +74,9 @@ namespace PersonalUsageOverlay
                 return "제목 위치 확인 불가 · 사이드바 선택 가능";
             }
         }
-        public OverlayContext(string diagnosticPath)
+        public OverlayContext(string diagnosticPath, DateTimeOffset startedAt)
         {
+            StartedAt = startedAt;
             diagnostics = diagnosticPath;
             eventCallback = OnNativeEvent;
             try

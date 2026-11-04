@@ -3,8 +3,8 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.6.3.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.6.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.6.4.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.6.4.0")]
 [assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
 namespace PersonalUsageOverlay
 {
@@ -13,6 +13,7 @@ namespace PersonalUsageOverlay
         [STAThread]
         private static void Main(string[] args)
         {
+            DateTimeOffset startedAt = DateTimeOffset.Now;
             if (args.Length > 0 && args[0] == "--self-test")
             {
                 DeveloperChecks.SelfTest(args.Length > 1 ? args[1] : null);
@@ -89,7 +90,7 @@ namespace PersonalUsageOverlay
 
                             Application.EnableVisualStyles();
                             Application.SetCompatibleTextRenderingDefault(false);
-                            using (var context = new OverlayContext(diagnostic))
+                            using (var context = new OverlayContext(diagnostic, startedAt))
                             {
                                 updateLock.ReleaseMutex();
                                 updateOwned = false;

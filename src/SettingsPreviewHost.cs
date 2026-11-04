@@ -33,7 +33,7 @@ namespace PersonalUsageOverlay
         public string Details { get { return presentation.Details; } }
         public UsagePresentation Presentation { get { return presentation; } }
         internal void SetPresentation(UsagePresentation value) { presentation = value; }
-        public bool IsSample { get { return true; } }
+        public DateTimeOffset StartedAt { get { return DateTimeOffset.Parse("2026-11-04T19:59:37+09:00", CultureInfo.InvariantCulture); } }
         public string PositionStatus { get { return prefs.Position == "sidebar" ? "사이드바 · 창 기준 위치" : "본문 제목 아래 · 자동 위치 확인됨"; } }
         public string ThemeStatus { get { return theme.IsDark ? "Codex · 다크 (미리보기)" : "Codex · 라이트 (미리보기)"; } }
         public VisualTheme Theme { get { return theme; } }

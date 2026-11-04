@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -31,10 +32,14 @@ namespace PersonalUsageOverlay
             using (var window = new SettingsWindow(host, 1f))
             {
                 BadgePreview preview = Field<BadgePreview>(window, "preview");
+                Label previewLabel = Field<Label>(window, "previewStatus");
+                UsagePresentation cachedPreview = preview.Presentation;
+                string cachedText = PreviewText(cachedPreview), cachedLabel = previewLabel.Text;
                 CheckBox reset = Field<CheckBox>(window, "resetChoice");
                 CheckBox countdown = Field<CheckBox>(window, "countdownChoice");
-                checks["settings_binding_fixture_stays_hidden_and_previews_only_its_fixture_state"] = !window.Visible && host.IsSample
-                    && Object.ReferenceEquals(preview.Presentation, host.Presentation)
+                checks["settings_binding_hidden_preview_uses_independent_example_and_process_start_clock"] = !window.Visible
+                    && !Object.ReferenceEquals(preview.Presentation, host.Presentation)
+                    && IsExamplePreview(preview.Presentation, host.StartedAt) && previewLabel.Text.Contains("예시")
                     && !Object.ReferenceEquals(preview.LayoutSettings, host.Prefs.BadgeLayout);
                 BadgeLayoutSettings beforeLoad = host.Prefs.BadgeLayout;
                 window.LoadPreferences();
@@ -100,6 +105,8 @@ namespace PersonalUsageOverlay
                 checks["settings_binding_theme_choice_and_reload_preserve_optional_choices"] = host.Prefs.ThemeMode == "light"
                     && themes.SelectedIndex == 2 && OptionsMatch(preview, host, false, true)
                     && json.Serialize(host.Prefs.BadgeLayout) == priorLayout;
+                checks["settings_binding_options_position_theme_and_reload_preserve_cached_example"] = PreviewUnchanged(preview,
+                    cachedPreview, cachedText, previewLabel, cachedLabel);
             }
         }
 
@@ -158,25 +165,35 @@ namespace PersonalUsageOverlay
             {
                 ThemedButton toggle = Field<ThemedButton>(window, "problemToggle");
                 TextBox details = Field<TextBox>(window, "problemDetails");
+                BadgePreview preview = Field<BadgePreview>(window, "preview");
+                Label previewLabel = Field<Label>(window, "previewStatus");
+                UsagePresentation cachedPreview = preview.Presentation;
+                string cachedText = PreviewText(cachedPreview), cachedLabel = previewLabel.Text;
                 checks["settings_failure_details_are_absent_during_normal_usage"] = !healthy.HasQueryFailure
                     && !LocallyVisible(toggle) && !LocallyVisible(details) && !Value<bool>(window, "problemExpanded")
-                    && details.Text == String.Empty;
+                    && details.Text == String.Empty && IsExamplePreview(cachedPreview, host.StartedAt)
+                    && !Object.ReferenceEquals(cachedPreview, healthy);
                 host.SetPresentation(failed);
                 window.UpdateUsage();
                 checks["settings_failure_shows_only_collapsed_problem_toggle"] = failed.HasQueryFailure
                     && LocallyVisible(toggle) && !LocallyVisible(details) && !Value<bool>(window, "problemExpanded");
+                checks["settings_actual_query_failure_preserves_example_reference_text_and_label"] = PreviewUnchanged(preview,
+                    cachedPreview, cachedText, previewLabel, cachedLabel) && !Object.ReferenceEquals(preview.Presentation, failed);
                 ClickOwnControl(toggle);
                 checks["settings_failure_toggle_opens_real_click_handler_and_expected_failure_text"] = Value<bool>(window, "problemExpanded")
                     && LocallyVisible(details) && Newlines(details.Text) == Newlines(failed.FailureDetails)
                     && details.Text.Length > 0 && !window.Visible;
                 ClickOwnControl(toggle);
                 checks["settings_failure_toggle_collapses_without_removing_failure_entry"] = !Value<bool>(window, "problemExpanded")
-                    && !LocallyVisible(details) && LocallyVisible(toggle);
+                    && !LocallyVisible(details) && LocallyVisible(toggle)
+                    && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel);
                 ClickOwnControl(toggle);
                 host.SetPresentation(healthy);
                 window.UpdateUsage();
                 checks["settings_failure_recovery_hides_clears_and_resets_expansion"] = !LocallyVisible(toggle) && !LocallyVisible(details)
                     && !Value<bool>(window, "problemExpanded") && details.Text == String.Empty;
+                checks["settings_actual_query_recovery_preserves_example_reference_text_and_label"] = PreviewUnchanged(preview,
+                    cachedPreview, cachedText, previewLabel, cachedLabel) && !Object.ReferenceEquals(preview.Presentation, healthy);
                 host.SetPresentation(failed);
                 window.UpdateUsage();
                 checks["settings_new_failure_after_recovery_starts_collapsed"] = LocallyVisible(toggle) && !LocallyVisible(details)
@@ -187,6 +204,8 @@ namespace PersonalUsageOverlay
                 checks["settings_loading_is_not_shown_as_a_failure_and_clears_old_problem_text"] = !loading.HasQueryFailure
                     && !LocallyVisible(toggle) && !LocallyVisible(details) && !Value<bool>(window, "problemExpanded")
                     && details.Text == String.Empty && !window.Visible;
+                checks["settings_actual_query_loading_preserves_example_reference_text_and_label"] = PreviewUnchanged(preview,
+                    cachedPreview, cachedText, previewLabel, cachedLabel) && !Object.ReferenceEquals(preview.Presentation, loading);
             }
         }
 
@@ -281,6 +300,24 @@ namespace PersonalUsageOverlay
         private static string Newlines(string value)
         {
             return (value ?? String.Empty).Replace("\r\n", "\n");
+        }
+
+        private static bool IsExamplePreview(UsagePresentation presentation, DateTimeOffset startedAt)
+        {
+            return presentation != null && presentation.MainText == "주간 96% 남음"
+                && presentation.DetailText == "갱신 " + startedAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) + " · 예시";
+        }
+
+        private static string PreviewText(UsagePresentation presentation)
+        {
+            return presentation == null ? String.Empty : presentation.MainText + "\n" + presentation.DetailText
+                + "\n" + presentation.ResetDateText + "\n" + presentation.CountdownText;
+        }
+
+        private static bool PreviewUnchanged(BadgePreview preview, UsagePresentation cached, string text, Label label, string caption)
+        {
+            return cached != null && Object.ReferenceEquals(preview.Presentation, cached) && PreviewText(preview.Presentation) == text
+                && label.Text == caption && caption.Contains("예시");
         }
     }
 }

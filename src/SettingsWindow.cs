@@ -54,6 +54,8 @@ namespace PersonalUsageOverlay
             }
 
             AddLabel(overlayPage, "오버레이 미리보기", 16, 12, 520, 22, 12, true);
+            preview.Presentation = UsagePresentation.CreatePreview(app.StartedAt);
+            preview.AccessibleDescription = "프로그램 시작 시각으로 만든 예시 데이터입니다.";
             preview.SetBounds(16, 42, 520, 140); AddUi(overlayPage, preview);
             previewStatus.SetBounds(16, 192, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
             AddLabel(overlayPage, "추가 항목 표시", 16, 224, 520, 22, 12, true);
@@ -167,10 +169,9 @@ namespace PersonalUsageOverlay
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();
         }
         private void UpdatePreviewStatus()
-        { previewStatus.Text = app.IsSample ? "예시 데이터 · 개발 미리보기" : "현재 조회 상태 · 항목 변경 즉시 반영"; }
+        { previewStatus.Text = "예시 데이터 · 프로그램 시작 시각 기준"; }
         public void UpdateUsage()
         {
-            if (!ReferenceEquals(preview.Presentation, app.Presentation)) preview.Presentation = app.Presentation;
             UpdateProblemDetails();
             UpdatePositionStatus();
         }

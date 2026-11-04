@@ -22,6 +22,7 @@ namespace PersonalUsageOverlay
             ThemeChecks.Run(checks);
             BadgeLayoutChecks.Run(checks);
             UsagePresentationChecks.Run(checks);
+            PreviewPresentationChecks.Run(checks);
             SettingsBindingChecks.Run(checks);
             HeadlineLayoutChecks.Run(checks);
             ThemedPaintChecks.Run(checks);
