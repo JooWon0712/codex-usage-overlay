@@ -1,6 +1,6 @@
 # Codex Usage Overlay
 
-Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 현재 버전은 **0.6.18**입니다.
+Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 현재 버전은 **1.0.0 정식 포터블 버전**입니다. 기존 0.6.18의 기능을 유지하며 배포 버전만 1.0.0으로 올렸습니다.
 
 문서화된 [Codex App Server](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)의 `account/rateLimits/read`를 사용합니다. OpenAI의 공식 제품이나 공식 확장 프로그램은 아닙니다.
 
@@ -137,7 +137,9 @@ node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
 .\.build\UsageOverlay.exe --render-samples .build\samples
 ```
 
-**0.6.18의 C# 자체 검사 501개가 통과**했습니다. Pro 세 표시명, 나머지 요금제 유지와 실패·갱신 중·만료 때의 이전 값 표시를 확인했습니다. 해당 변경에서 Node 검사는 다시 실행하지 않았고 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링도 수행하지 않았습니다. Node 검사 31개 통과와 PNG 384개 렌더링은 **0.6.17의 기록**입니다. 버전별 근거와 실제 확인 범위는 [검증 기록](docs/verification-history.md)에 보존했습니다.
+**과거 0.6.18의 C# 자체 검사 501개가 통과**했습니다. Pro 세 표시명, 나머지 요금제 유지와 실패·갱신 중·만료 때의 이전 값 표시를 확인했습니다. 해당 변경에서 Node 검사는 다시 실행하지 않았고 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링도 수행하지 않았습니다. Node 검사 31개 통과와 PNG 384개 렌더링은 **0.6.17의 기록**이며 이 수치는 1.0.0 새 빌드의 검증 결과가 아닙니다. 버전별 근거와 실제 확인 범위는 [검증 기록](docs/verification-history.md)에 보존했습니다.
+
+**1.0.0 후보 빌드는 C# 자체 검사 501개, Node 검사 45개, 패키징 검사 14개를 통과**했습니다. 실제 계정 조회·일반 앱 실행·사용자 PC 설치는 수행하지 않았습니다.
 
 ## GitHub 빌드 출처 증명과 릴리스
 
