@@ -4,7 +4,7 @@ Codex 잔여 한도 오버레이 · 최소 기능 프로토타입
 0.5.0부터 ZIP을 풀어 사용하는 휴대용 형식입니다.
 현재 소스 버전은 0.6.18이며 기본 표시 위치는 실제 세션 제목 아래입니다.
 다운로드 목록: https://github.com/JooWon0712/codex-usage-overlay/releases
-정식 버전 태그의 빌드/검사/출처 증명이 성공하면 ZIP을 자동 게시하도록 구성했으며 아직 실제 태그나 Release는 생성하지 않았습니다.
+정식 버전 태그의 빌드/검사/출처 증명이 성공하면 ZIP을 자동 게시합니다. 공개된 버전과 파일은 다운로드 목록에서 확인하세요.
 공개 시 자산은 codex-usage-overlay-windows-x64.zip, SHA256SUMS.txt, codex-usage-overlay.intoto.jsonl 세 개입니다.
 실행 파일은 ZIP 안에 포함되며 별도로 내려받지 않습니다. Release가 없으면 성공한 Actions 아티팩트나 직접 빌드를 사용합니다.
 codex-usage-overlay-windows-x64.zip을 원하는 폴더에 압축 해제하고,
@@ -492,7 +492,7 @@ GitHub 빌드 출처 증명과 자동 게시
 워크플로: https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml
 PR은 빌드만, main push/main 수동 실행은 빌드와 출처 증명을 수행합니다. Actions 아티팩트 보관 기간은 30일입니다.
 정식 vMAJOR.MINOR.PATCH 태그 push만 Release를 게시하며 AssemblyVersion/AssemblyFileVersion X.Y.Z.0과 일치하고
-태그 커밋이 origin/main에 포함돼 있어야 합니다. 실제 태그 공개는 이번 구성 추가와 별개입니다.
+태그 커밋이 origin/main에 포함돼 있어야 합니다. 기존 태그를 재사용하거나 이동하지 않습니다.
 별도 게시 작업은 새 draft에 ZIP/체크섬/증명 번들을 올려 SHA-256/크기/태그 커밋을 확인한 뒤 공개합니다.
 같은 태그의 Release나 draft가 이미 있으면 중단하며 덮어쓰지 않습니다. 실패 시 미공개 draft가 남을 수 있어 재시도 전 확인해야 합니다.
 이 출처 증명은 GitHub 소스/워크플로 확인용이며 Windows Authenticode나 SmartScreen의 신뢰된 게시자 서명이 아닙니다.

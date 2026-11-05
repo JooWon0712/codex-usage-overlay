@@ -44,7 +44,7 @@ Node와 Codex는 기존 설치를 사용하며 포터블 폴더에 포함되지 
 
 ## 포터블 실행과 업데이트
 
-정식 버전 태그의 빌드·검사·출처 증명이 모두 성공하면 [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에 포터블 ZIP을 자동 게시하도록 구성했습니다. 아직 실제 버전 태그나 Release를 생성하지 않았습니다. [Actions](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)의 성공한 실행에서 **Artifacts**를 받거나 아래 개발 절차로 직접 빌드할 수도 있습니다.
+정식 버전 태그의 빌드·검사·출처 증명이 모두 성공하면 [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에 포터블 ZIP을 자동 게시합니다. 공개된 버전과 파일은 Release 목록에서 확인하세요. [Actions](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)의 성공한 실행에서 **Artifacts**를 받거나 아래 개발 절차로 직접 빌드할 수도 있습니다.
 
 Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`, `codex-usage-overlay.intoto.jsonl` 세 개입니다. EXE는 ZIP 안에 포함되며 별도 자산으로 게시하지 않습니다. 전체 ZIP을 풀어 사용하며 Node와 인증된 Codex CLI는 PC에 별도로 준비해야 합니다.
 
@@ -196,14 +196,15 @@ ZIP을 `downloaded/codex-usage-overlay/`에 풀면 같은 증명 번들로 그 �
 
 태그는 **`vMAJOR.MINOR.PATCH` 정식 버전**만 허용합니다. 태그 `vX.Y.Z`와 `src/Program.cs`의 `AssemblyVersion`·`AssemblyFileVersion`이 모두 `X.Y.Z.0`으로 일치해야 하며 태그 커밋이 `origin/main`에 포함돼 있어야 합니다. `main`의 모든 커밋이 Release가 되는 것은 아니며 **태그 push만** 게시를 시작합니다.
 
-현재 소스 버전 기준의 관리자용 예시는 다음과 같습니다. 버전과 `main` 반영 상태를 확인한 뒤 새 태그에만 사용하며 이 예시가 이미 실행됐거나 v0.6.18이 공개됐다는 뜻은 아닙니다.
+다음 배포를 위한 관리자용 예시는 아래와 같습니다. `vX.Y.Z`를 새 버전의 실제 태그로 바꾸고 소스 버전과 `main` 반영 상태를 확인한 뒤 사용합니다. 이미 존재하는 태그는 재사용하거나 이동하지 않습니다.
 
 ```powershell
+$tag = 'vX.Y.Z'
 git fetch origin
 git switch main
 git pull --ff-only
-git tag -a v0.6.18 -m "Codex Usage Overlay v0.6.18"
-git push origin v0.6.18
+git tag -a $tag -m "Codex Usage Overlay $tag"
+git push origin $tag
 ```
 
 게시 작업은 권한이 분리된 별도 job에서 새 draft를 만들고 세 자산을 올린 뒤 자산별 SHA-256·크기와 태그 커밋을 확인한 후 공개합니다. 같은 태그의 Release나 draft가 이미 있으면 중단하며 덮어쓰지 않습니다. 실패 시 미공개 draft가 남을 수 있으므로 재시도 전에 상태를 확인해야 합니다.
