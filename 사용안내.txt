@@ -1,12 +1,27 @@
 Codex 잔여 한도 오버레이 · 최소 기능 프로토타입
 
-실행
-0.5.0부터 ZIP을 풀어 사용하는 휴대용 형식입니다.
-현재 소스 버전은 0.6.18이며 기본 표시 위치는 실제 세션 제목 아래입니다.
+배포와 실행
+현재 소스 버전은 0.7.0이며 기본 표시 위치는 실제 세션 제목 아래입니다.
 다운로드 목록: https://github.com/JooWon0712/codex-usage-overlay/releases
-정식 버전 태그의 빌드/검사/출처 증명이 성공하면 ZIP을 자동 게시합니다. 공개된 버전과 파일은 다운로드 목록에서 확인하세요.
-공개 시 자산은 codex-usage-overlay-windows-x64.zip, SHA256SUMS.txt, codex-usage-overlay.intoto.jsonl 세 개입니다.
-실행 파일은 ZIP 안에 포함되며 별도로 내려받지 않습니다. Release가 없으면 성공한 Actions 아티팩트나 직접 빌드를 사용합니다.
+0.7.0 Setup은 아직 게시 전이며 기존 v0.6.18 포터블 릴리스는 그대로 유지합니다.
+새 릴리스 자산은 codex-usage-overlay-windows-x64.zip, codex-usage-overlay-setup-windows-x64.exe,
+SHA256SUMS.txt, codex-usage-overlay.intoto.jsonl 네 개입니다. 앱 EXE는 ZIP과 Setup 안에 포함됩니다.
+정식 버전 태그의 빌드/검사/출처 증명이 성공하면 게시하며 공개 여부는 다운로드 목록에서 확인하세요.
+
+Setup 설치와 수동 업데이트
+codex-usage-overlay-setup-windows-x64.exe는 관리자 권한 없이 현재 사용자에게 설치합니다.
+기본 경로는 %LOCALAPPDATA%\Programs\CodexUsageOverlay이며 업데이트는 이전에 선택한 설치 폴더를 사용합니다.
+시작 메뉴 바로가기를 만들며 바탕 화면 바로가기는 선택입니다. 설치 후 앱을 자동 실행하거나 로그인 자동 시작을 등록하지 않습니다.
+앱의 '업데이트 확인'은 기본 브라우저로 Releases를 열기만 합니다. 자동 버전 조회/다운로드/설치는 하지 않습니다.
+새 Setup은 사용자가 직접 내려받아 실행합니다. 실행 중인 앱이 있으면 먼저 닫지 않는 사전 확인을 하고,
+사용자 동의 뒤 정상 종료와 소유 작업의 실제 종료를 확인한 다음 파일을 변경합니다.
+무인 설치/제거에서 확인된 앱의 종료를 허용하려면 /ALLOWAPPCLOSE=1을 명시해야 하며 기본은 중단입니다.
+오래된 앱이나 확인할 수 없는 실행 상태이면 X/종료로 직접 닫은 뒤 다시 시도합니다.
+Windows '설치된 앱'에서 제거할 수 있습니다. 공유 사용자 설정은 업데이트/제거 모두 보존합니다.
+runtime-paths.json은 설치 폴더에 없을 때만 복사하고 업데이트/제거에서 보존하므로 폴더가 남을 수 있습니다.
+포터블과 설치형은 설정과 단일 실행 식별자를 공유하며 앱을 다시 실행하면 기존 창을 복원합니다.
+
+포터블 실행
 codex-usage-overlay-windows-x64.zip을 원하는 폴더에 압축 해제하고,
 압축 해제한 폴더 안의 UsageOverlay.exe를 두 번 눌러 실행합니다.
 Setup.exe나 install.ps1 실행, 고정 경로 설치, 관리자 권한이 필요하지 않습니다.
@@ -467,7 +482,7 @@ PNG 384개를 생성했습니다. 사용자 지정 제목 영역 이미지 6개�
 공식 문서와 현재 Codex CLI 0.166.0-alpha.6의 생성 schema를 두 번 대조했습니다.
 PNG 384개를 렌더링해 라이트/다크의 선택 옵션과 문구 겹침을 확인했으며 자체 배지 창 GDI 자원 수는 전후 43개였습니다.
 실제 사용자 요금제 조회/일반 Overlay 실행/물리 모니터 이동/고대비 전환은 이번 작업에서 검증하지 않았습니다.
-이 결과는 예시 데이터와 개발용 검사에 관한 것이며 현재 0.6.18의 검사 결과가 아닙니다.
+이 결과는 예시 데이터와 개발용 검사에 관한 것이며 후속 버전의 검사 결과가 아닙니다.
 
 개발 및 재빌드
 build.ps1은 PC의 기존 Windows C# 컴파일러로 .build에 실행 파일을 빌드합니다.
@@ -478,6 +493,16 @@ build.ps1 또는 package.ps1의 -PortableRuntimePaths 옵션은 node.exe/codex.e
 GitHub CI는 이 배포용 옵션을 사용합니다. 프로그램을 실제로 사용할 때는 해당 PC의 Node/Codex 설치와 인증이 필요합니다.
 생성물과 로컬 경로 설정은 Git에서 제외합니다.
 이 스크립트들은 개발·배포용이며 일반 사용자는 PowerShell을 실행할 필요가 없습니다.
+설치형 개발은 Inno Setup 6.7.4를 사용합니다. tools\prepare-inno.ps1을 명시적으로 실행하면
+고정 SHA-256/제작자 서명을 확인한 컴파일러를 작업 폴더의 포터블 모드로 준비하며 Windows 설치 등록은 하지 않습니다.
+기존 컴파일러가 있으면 직접 -CompilerPath로 지정할 수 있습니다.
+Setup 빌드 예시:
+$compiler = .\tools\prepare-inno.ps1
+.\setup.ps1 -PayloadPath .\dist\codex-usage-overlay -CompilerPath $compiler -OutputDirectory .\dist
+.\setup.test.ps1 -SetupPath .\dist\codex-usage-overlay-setup-windows-x64.exe
+setup.ps1은 이미 검증된 7파일 포터블 payload를 소비하며 앱을 다시 빌드하거나 설치하지 않습니다.
+일반 setup.test.ps1은 설치를 실행하지 않습니다. -Integration 및 tools\test-setup-lifecycle.ps1은
+일회용 GitHub 호스팅 Windows 실행기에서만 허용하며 사용자 PC의 설치/실제 계정/일반 UI 검증과 구분합니다.
 Node 검사: node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
 좌표/실행 경로/주간 경고 검사: .build\UsageOverlay.exe --self-test .build\geometry-test.json
 테스트 모양 렌더링: .build\UsageOverlay.exe --render-samples .build\warning-samples
@@ -493,11 +518,12 @@ GitHub 빌드 출처 증명과 자동 게시
 PR은 빌드만, main push/main 수동 실행은 빌드와 출처 증명을 수행합니다. Actions 아티팩트 보관 기간은 30일입니다.
 정식 vMAJOR.MINOR.PATCH 태그 push만 Release를 게시하며 AssemblyVersion/AssemblyFileVersion X.Y.Z.0과 일치하고
 태그 커밋이 origin/main에 포함돼 있어야 합니다. 기존 태그를 재사용하거나 이동하지 않습니다.
-별도 게시 작업은 새 draft에 ZIP/체크섬/증명 번들을 올려 SHA-256/크기/태그 커밋을 확인한 뒤 공개합니다.
+빌드 출처 증명은 앱 EXE/포터블 ZIP/Setup EXE 세 대상을 검증합니다.
+별도 게시 작업은 새 draft에 ZIP/Setup/체크섬/증명 번들 네 자산을 올려 SHA-256/크기/태그 커밋을 확인한 뒤 공개합니다.
 같은 태그의 Release나 draft가 이미 있으면 중단하며 덮어쓰지 않습니다. 실패 시 미공개 draft가 남을 수 있어 재시도 전 확인해야 합니다.
 이 출처 증명은 GitHub 소스/워크플로 확인용이며 Windows Authenticode나 SmartScreen의 신뢰된 게시자 서명이 아닙니다.
 Release 노트의 Source commit과 함께 받은 codex-usage-overlay.intoto.jsonl을 사용한 검증 명령은 저장소 README에 있습니다.
-자동 게시가 로컬 설치/앱 자동 업데이트/자동 시작을 수행하지는 않습니다. 업데이트는 X 종료 뒤 전체 폴더를 교체합니다.
+자동 게시가 로컬 설치/앱 자동 업데이트/자동 시작을 수행하지는 않습니다. 포터블은 X 종료 뒤 전체 폴더를 교체하고 설치형은 새 Setup을 직접 실행합니다.
 
 공식 조회 설명
 https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt
@@ -518,4 +544,4 @@ https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt
   설치/업데이트/프로그램 실행은 해당 작업에 대한 사용자의 명시적 허용 후 진행합니다.
 
 
-0.6.18은 C# 자체 검사 501개를 통과했습니다. Pro 세 가지 표시명과 나머지 요금제 표시 유지, 갱신 실패·갱신 중·만료 때 등급명이 포함된 이전 값 표시를 확인했습니다. 자체 배지 창 GDI 자원 수는 전후 43개였습니다. 이번 변경은 표시명만 바꾸며 Node 조회 코드는 수정하거나 다시 검사하지 않았습니다. 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링은 수행하지 않았습니다.
+과거 0.6.18은 C# 자체 검사 501개를 통과했습니다. Pro 세 가지 표시명과 나머지 요금제 표시 유지, 갱신 실패·갱신 중·만료 때 등급명이 포함된 이전 값 표시를 확인했습니다. 자체 배지 창 GDI 자원 수는 전후 43개였습니다. 당시 변경은 표시명만 바꾸며 Node 조회 코드는 수정하거나 다시 검사하지 않았습니다. 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링은 수행하지 않았습니다. 이는 0.7.0 설치형의 검증 결과가 아닙니다.

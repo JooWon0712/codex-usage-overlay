@@ -19,6 +19,7 @@ namespace PersonalUsageOverlay
         private readonly ThemedNumericUpDown x = new ThemedNumericUpDown(), y = new ThemedNumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
         private readonly ThemedButton problemToggle = new ThemedButton();
+        private readonly ThemedButton updateCheck = new ThemedButton();
         private readonly TextBox problemDetails = new TextBox();
         private readonly ThemedTrackBar transparencyChoice = new ThemedTrackBar();
         private readonly Label transparencyStatus = new Label();
@@ -41,7 +42,13 @@ namespace PersonalUsageOverlay
             Font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
-            AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
+            AddLabel(this, "Codex 잔여 한도", 22, 18, 396, 30, 20, true);
+            updateCheck.Text = "업데이트 확인";
+            updateCheck.AccessibleName = "업데이트 확인";
+            updateCheck.AccessibleDescription = "기본 브라우저에서 GitHub Releases를 엽니다. 설치 파일은 직접 내려받아 실행합니다.";
+            updateCheck.SetBounds(440, 18, 138, 30);
+            updateCheck.Click += delegate { app.OpenReleases(); };
+            AddUi(this, updateCheck);
             AddLabel(this, "두 탭에서 설정을 바꾸며 Codex 위 실제 배지를 확인하세요.", 22, 56, 556, 24, 12, false);
             pageHost.SetBounds(20, 130, 560, 428); AddUi(this, pageHost);
             pages = new[] { overlayPage, positionPage };

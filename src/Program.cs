@@ -3,8 +3,8 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.6.18.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.6.18.0")]
+[assembly: System.Reflection.AssemblyVersion("0.7.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.7.0.0")]
 [assembly: System.Reflection.AssemblyTitle("Codex Usage Overlay")]
 namespace PersonalUsageOverlay
 {
@@ -14,6 +14,18 @@ namespace PersonalUsageOverlay
         private static void Main(string[] args)
         {
             DateTimeOffset startedAt = DateTimeOffset.Now;
+            if (args.Length > 0 && args[0] == "--prepare-install")
+            {
+                string target; int timeout; bool noClose;
+                Environment.ExitCode = ShutdownCoordinator.TryPrepareArguments(args, out target, out timeout, out noClose)
+                    ? ShutdownCoordinator.Prepare(target, timeout, noClose) : ShutdownCoordinator.InvalidArguments;
+                return;
+            }
+            if (args.Length > 0 && (args[0] == "--lifetime-fixture" || args[0] == "--lifetime-fixture-child"))
+            {
+                Environment.ExitCode = LifetimeFixture.Run(args);
+                return;
+            }
             if (args.Length > 0 && args[0] == "--self-test")
             {
                 DeveloperChecks.SelfTest(args.Length > 1 ? args[1] : null);
@@ -78,6 +90,7 @@ namespace PersonalUsageOverlay
                             return;
                         }
 
+                        InstanceLifetime lifetime = null;
                         try
                         {
                             try
@@ -90,6 +103,7 @@ namespace PersonalUsageOverlay
 
                             Application.EnableVisualStyles();
                             Application.SetCompatibleTextRenderingDefault(false);
+                            lifetime = new InstanceLifetime();
                             using (var context = new OverlayContext(diagnostic, startedAt))
                             {
                                 updateLock.ReleaseMutex();
@@ -104,6 +118,11 @@ namespace PersonalUsageOverlay
                         }
                         finally
                         {
+                            if (lifetime != null)
+                            {
+                                if (!lifetime.WorkDrained && Environment.ExitCode == 0) Environment.ExitCode = 5;
+                                lifetime.Dispose();
+                            }
                             mutex.ReleaseMutex();
                         }
                     }
@@ -118,40 +137,7 @@ namespace PersonalUsageOverlay
 
         private static int ShutdownAndWait(int timeout)
         {
-            try
-            {
-                using (var mutex = Mutex.OpenExisting(AppIdentity.SingleInstance))
-                {
-                    if (AppIdentity.Acquire(mutex, 0))
-                    {
-                        mutex.ReleaseMutex();
-                        return 0;
-                    }
-
-                    try
-                    {
-                        using (var signal = EventWaitHandle.OpenExisting(AppIdentity.Shutdown))
-                            signal.Set();
-                    }
-                    catch (WaitHandleCannotBeOpenedException)
-                    {
-                        return 3;
-                    } // Legacy process: require normal UI exit.
-
-                    if (!AppIdentity.Acquire(mutex, timeout))
-                        return 2;
-                    mutex.ReleaseMutex();
-                    return 0;
-                }
-            }
-            catch (WaitHandleCannotBeOpenedException)
-            {
-                return 0;
-            }
-            catch
-            {
-                return 1;
-            }
+            return ShutdownCoordinator.Prepare(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UsageOverlay.exe"), timeout, false);
         }
     }
 }

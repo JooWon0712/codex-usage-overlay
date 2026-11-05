@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and test Windows portable
+    name: Build and test Windows packages
     runs-on: windows-2022
     timeout-minutes: 15
     outputs:
@@ -86,6 +86,23 @@ jobs:
           $count = @($result.checks.psobject.Properties).Count
           "Developer checks passed: $count" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
+      - name: Prepare the pinned portable Inno Setup compiler
+        run: |
+          if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted') {
+            throw 'CI compiler preparation requires a disposable GitHub-hosted runner.'
+          }
+          $compiler = .\tools\prepare-inno.ps1 -Destination (Join-Path $env:RUNNER_TEMP 'inno-setup-6.7.4')
+          "INNO_SETUP_COMPILER=$compiler" | Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build Setup from the tested portable payload
+        run: |
+          .\setup.ps1 -PayloadPath (Join-Path $PWD 'dist/codex-usage-overlay') `
+            -CompilerPath $env:INNO_SETUP_COMPILER -OutputDirectory (Join-Path $PWD 'dist')
+
+      - name: Test Setup lifecycle on the disposable runner
+        run: |
+          .\setup.test.ps1 -SetupPath (Join-Path $PWD 'dist/codex-usage-overlay-setup-windows-x64.exe') -Integration
+
       - name: Preserve failing developer-check observations
         if: failure() && hashFiles('.build/ci-self-test.json') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -97,7 +114,7 @@ jobs:
 
       - name: Record final file hashes
         run: |
-          $subjects = @('codex-usage-overlay-windows-x64.zip', 'codex-usage-overlay/UsageOverlay.exe')
+          $subjects = @('codex-usage-overlay-windows-x64.zip', 'codex-usage-overlay-setup-windows-x64.exe', 'codex-usage-overlay/UsageOverlay.exe')
           $lines = foreach ($subject in $subjects) {
             $hash = (Get-FileHash -LiteralPath (Join-Path 'dist' $subject) -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $subject"
@@ -106,7 +123,7 @@ jobs:
           $summary = @('', "Build commit: $env:GITHUB_SHA", '', '```text') + $lines + @('```')
           $summary | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Upload complete portable folder and archive
+      - name: Upload portable and Setup build outputs
         id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -144,13 +161,14 @@ jobs:
         working-directory: payload
         run: sha256sum --check SHA256SUMS.txt
 
-      - name: Generate EXE and ZIP build provenance
+      - name: Generate app EXE, ZIP and Setup build provenance
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             payload/codex-usage-overlay/UsageOverlay.exe
             payload/codex-usage-overlay-windows-x64.zip
+            payload/codex-usage-overlay-setup-windows-x64.exe
           push-to-registry: false
           create-storage-record: false
 
@@ -159,7 +177,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
         run: |
-          for subject in payload/codex-usage-overlay/UsageOverlay.exe payload/codex-usage-overlay-windows-x64.zip; do
+          for subject in payload/codex-usage-overlay/UsageOverlay.exe payload/codex-usage-overlay-windows-x64.zip payload/codex-usage-overlay-setup-windows-x64.exe; do
             gh attestation verify "$subject" \
               --repo "$GITHUB_REPOSITORY" \
               --source-digest "$SOURCE_SHA" \
@@ -168,7 +186,7 @@ jobs:
               --deny-self-hosted-runners
           done
 
-      - name: Upload portable attestation bundle
+      - name: Upload attestation bundle
         id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -178,7 +196,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish verified portable release
+    name: Publish verified Windows release
     needs: [build, attest]
     if: >-
       github.repository == 'JooWon0712/codex-usage-overlay' &&
@@ -221,7 +239,7 @@ jobs:
             echo 'Expected the nonempty actions/attest bundle.' >&2; exit 1
           fi
           mkdir release
-          cp payload/codex-usage-overlay-windows-x64.zip payload/SHA256SUMS.txt release/
+          cp payload/codex-usage-overlay-windows-x64.zip payload/codex-usage-overlay-setup-windows-x64.exe payload/SHA256SUMS.txt release/
           cp provenance/attestation.json release/codex-usage-overlay.intoto.jsonl
 
       - name: Verify bundled provenance against the exact tag and source
@@ -229,7 +247,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
         run: |
-          for subject in payload/codex-usage-overlay/UsageOverlay.exe release/codex-usage-overlay-windows-x64.zip; do
+          for subject in payload/codex-usage-overlay/UsageOverlay.exe release/codex-usage-overlay-windows-x64.zip release/codex-usage-overlay-setup-windows-x64.exe; do
             gh attestation verify "$subject" \
               --bundle release/codex-usage-overlay.intoto.jsonl \
               --repo "$GITHUB_REPOSITORY" \

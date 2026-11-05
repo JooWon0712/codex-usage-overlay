@@ -56,6 +56,7 @@ namespace PersonalUsageOverlay
         private DateTime lastDiagnostic = DateTime.MinValue, workerRestartAfter = DateTime.MinValue;
         private readonly RuntimePaths runtime;
         private IntPtr workerJob;
+        private bool ownedCleanupVerified = true;
         private EventWaitHandle openSettingsEvent;
         private RegisteredWaitHandle openSettingsWait;
         private EventWaitHandle shutdownEvent;
@@ -440,14 +441,15 @@ namespace PersonalUsageOverlay
                 if (p != null)
                 {
                     if (started)
-                        TryCleanup(delegate
+                        try
                         {
                             if (!p.HasExited)
                             {
                                 p.Kill();
-                                p.WaitForExit(2000);
+                                if (!p.WaitForExit(2000)) ownedCleanupVerified = false;
                             }
-                        });
+                        }
+                        catch { ownedCleanupVerified = false; }
                     TryCleanup(p.Dispose);
                 }
 
@@ -487,6 +489,18 @@ namespace PersonalUsageOverlay
             if (worker == null)
                 StartWorker();
             Send(new { command = "refresh" });
+        }
+
+        public void OpenReleases()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("https://github.com/JooWon0712/codex-usage-overlay/releases") { UseShellExecute = true });
+            }
+            catch
+            {
+                MessageBox.Show("릴리스 페이지를 열지 못했습니다. 기본 브라우저 설정을 확인해 주세요.", "Codex Usage Overlay");
+            }
         }
 
         public void Quit()
@@ -771,6 +785,7 @@ namespace PersonalUsageOverlay
 
             if (workerJob != IntPtr.Zero)
             {
+                if (!ShutdownCoordinator.DrainOwnedJob(workerJob, 5000)) ownedCleanupVerified = false;
                 Native.CloseHandle(workerJob);
                 workerJob = IntPtr.Zero;
             }
@@ -778,6 +793,7 @@ namespace PersonalUsageOverlay
             TryCleanup(badge.Dispose);
             TryCleanup(dispatcher.Dispose);
             TryCleanup(timer.Dispose);
+            InstanceLifetime.ConfirmOwnedWorkDrained(ownedCleanupVerified);
         }
     }
 }

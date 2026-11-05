@@ -238,6 +238,7 @@ namespace PersonalUsageOverlay
             public void SetTheme(string value) { MutationCalls++; inner.SetTheme(value); }
             public void SetBadgeLayout(BadgeLayoutSettings value) { MutationCalls++; inner.SetBadgeLayout(value); }
             public void ManualRefresh() { QueryCalls++; inner.ManualRefresh(); }
+            public void OpenReleases() { WindowCalls++; inner.OpenReleases(); }
             public void ActivateTarget() { WindowCalls++; inner.ActivateTarget(); }
             public void Quit() { WindowCalls++; inner.Quit(); }
         }

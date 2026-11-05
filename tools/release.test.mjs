@@ -121,20 +121,44 @@ test('untrusted release context, mismatching checkout/version and non-main commi
   assert.throws(() => releaseMetadata(ENV, SOURCE, gitFixture({ notOnMain: true }).git), /not an ancestor/);
 });
 
-test('release assets bind the nonempty local files to the ZIP checksum', t => {
+test('release assets bind the nonempty ZIP and Setup to three strict subject checksums', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-overlay-release-test-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const zip = Buffer.from('synthetic portable ZIP bytes');
+  const setup = Buffer.from('synthetic Setup EXE bytes');
   fs.writeFileSync(path.join(directory, RELEASE_FILES[0]), zip);
-  fs.writeFileSync(path.join(directory, RELEASE_FILES[1]), `${hash(zip)}  ${RELEASE_FILES[0]}\n${'c'.repeat(64)}  codex-usage-overlay/UsageOverlay.exe\n`);
-  fs.writeFileSync(path.join(directory, RELEASE_FILES[2]), '{"synthetic":"attestation"}\n');
+  fs.writeFileSync(path.join(directory, RELEASE_FILES[1]), setup);
+  fs.writeFileSync(path.join(directory, 'SHA256SUMS.txt'), `${hash(zip)}  ${RELEASE_FILES[0]}\n${hash(setup)}  ${RELEASE_FILES[1]}\n${'c'.repeat(64)}  codex-usage-overlay/UsageOverlay.exe\n`);
+  fs.writeFileSync(path.join(directory, 'codex-usage-overlay.intoto.jsonl'), '{"synthetic":"attestation"}\n');
   const selected = releaseAssets(directory);
   assert.deepEqual(selected.map(item => item.name), RELEASE_FILES);
   assert.equal(selected[0].digest, `sha256:${hash(zip)}`);
+  assert.equal(selected[1].digest, `sha256:${hash(setup)}`);
   fs.appendFileSync(path.join(directory, RELEASE_FILES[0]), 'tampered');
   assert.throws(() => releaseAssets(directory), /checksum mismatch/);
-  fs.writeFileSync(path.join(directory, RELEASE_FILES[2]), '');
+  fs.writeFileSync(path.join(directory, RELEASE_FILES[0]), zip);
+  fs.appendFileSync(path.join(directory, RELEASE_FILES[1]), 'tampered');
+  assert.throws(() => releaseAssets(directory), /Setup checksum mismatch/);
+  fs.writeFileSync(path.join(directory, RELEASE_FILES[1]), setup);
+  fs.writeFileSync(path.join(directory, 'codex-usage-overlay.intoto.jsonl'), '');
   assert.throws(() => releaseAssets(directory), /Invalid release file/);
+});
+
+test('checksum subjects cannot omit, duplicate or substitute the Setup or app executable', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-overlay-release-test-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const data = Buffer.from('synthetic artifact');
+  for (const name of RELEASE_FILES) fs.writeFileSync(path.join(directory, name), data);
+  const line = name => `${hash(data)}  ${name}`;
+  for (const subjects of [
+    RELEASE_FILES.slice(0, 2),
+    [RELEASE_FILES[0], RELEASE_FILES[1], RELEASE_FILES[1]],
+    [RELEASE_FILES[0], RELEASE_FILES[1], 'unrelated.exe'],
+    [RELEASE_FILES[0], 'codex-usage-overlay/UsageOverlay.exe', 'codex-usage-overlay/UsageOverlay.exe'],
+  ]) {
+    fs.writeFileSync(path.join(directory, 'SHA256SUMS.txt'), subjects.map(line).join('\n') + '\n');
+    assert.throws(() => releaseAssets(directory), /checksums|checksum/);
+  }
 });
 
 test('publication creates a draft, verifies all uploaded digests and publishes only the created release ID', async () => {
@@ -148,8 +172,12 @@ test('publication creates a draft, verifies all uploaded digests and publishes o
   assert.equal(create.body.target_commitish, SHA);
   assert.ok(create.body.body.includes(`--source-digest ${SHA}`));
   assert.ok(create.body.body.includes('not Windows Authenticode signing'));
+  assert.ok(create.body.body.includes('gh attestation verify codex-usage-overlay-setup-windows-x64.exe'));
   const uploads = fixture.calls.filter(call => call.method === 'UPLOAD');
-  assert.deepEqual(uploads.map(call => new URL(call.endpoint).searchParams.get('name')), RELEASE_FILES);
+  assert.deepEqual(uploads.map(call => new URL(call.endpoint).searchParams.get('name')), [
+    'codex-usage-overlay-windows-x64.zip', 'codex-usage-overlay-setup-windows-x64.exe',
+    'SHA256SUMS.txt', 'codex-usage-overlay.intoto.jsonl',
+  ]);
   assert.ok(uploads.every(call => new URL(call.endpoint).origin === 'https://uploads.github.com'));
   assert.deepEqual(fixture.calls.at(-1), { method: 'PATCH', endpoint: `${PREFIX}/releases/${RELEASE_ID}`,
     body: { draft: false, make_latest: 'legacy' } });
@@ -193,12 +221,14 @@ test('missing, duplicate, unfinished, wrong-size or wrong-digest assets all prev
   const scenarios = {
     missing: actual => actual.slice(1),
     extra: actual => [...actual, { ...actual[0], id: 999 }],
-    duplicateName: actual => [{ ...actual[0] }, { ...actual[1], name: actual[0].name }, actual[2]],
-    duplicateId: actual => [{ ...actual[0] }, { ...actual[1], id: actual[0].id }, actual[2]],
+    duplicateName: actual => [{ ...actual[0] }, { ...actual[1], name: actual[0].name }, ...actual.slice(2)],
+    duplicateId: actual => [{ ...actual[0] }, { ...actual[1], id: actual[0].id }, ...actual.slice(2)],
     invalidId: actual => [{ ...actual[0], id: 0 }, ...actual.slice(1)],
     unfinished: actual => [{ ...actual[0], state: 'new' }, ...actual.slice(1)],
     size: actual => [{ ...actual[0], size: actual[0].size + 1 }, ...actual.slice(1)],
     digest: actual => [{ ...actual[0], digest: `sha256:${'0'.repeat(64)}` }, ...actual.slice(1)],
+    setupDigest: actual => [actual[0], { ...actual[1], digest: `sha256:${'0'.repeat(64)}` }, ...actual.slice(2)],
+    setupSize: actual => [actual[0], { ...actual[1], size: actual[1].size + 1 }, ...actual.slice(2)],
   };
   for (const [name, mutateAssets] of Object.entries(scenarios)) {
     const fixture = publisherFixture({ mutateAssets });
@@ -228,7 +258,8 @@ test('a tag changed before creation or after verification cannot publish the att
 
 test('invalid publisher inputs are rejected before touching the remote API', async () => {
   for (const overrides of [{ tag: 'v1.2.3-rc.1' }, { sha: 'not-a-commit' }, { repo: '../wrong' },
-    { runId: '123/secret' }, { assets: assets().reverse() }, { assets: assets().slice(1) }]) {
+    { runId: '123/secret' }, { assets: assets().reverse() }, { assets: assets().slice(1) },
+    { assets: assets().filter(asset => asset.name !== 'codex-usage-overlay-setup-windows-x64.exe') }]) {
     const fixture = publisherFixture();
     await assert.rejects(fixture.publish(overrides));
     assert.deepEqual(fixture.calls, []);
