@@ -18,7 +18,6 @@ namespace PersonalUsageOverlay
             TitleAnchorTrackerChecks.Run(checks);
             CheckPreferences(checks);
             RuntimeResolverChecks.Run(checks);
-            ShutdownCoordinatorChecks.Run(checks);
             ThemeReaderChecks.Run(checks);
             ThemeChecks.Run(checks);
             BadgeLayoutChecks.Run(checks);

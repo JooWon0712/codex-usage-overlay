@@ -9,7 +9,6 @@ namespace PersonalUsageOverlay
         private readonly Preferences prefs = new Preferences();
         private readonly VisualTheme theme;
         private UsagePresentation presentation;
-        internal int ReleasePageRequests;
         public SettingsPreviewHost(VisualTheme theme, string position = Preferences.BelowTitle, UsagePresentation value = null)
         {
             this.theme = theme; prefs.Position = position; prefs.NormalizePosition();
@@ -43,7 +42,6 @@ namespace PersonalUsageOverlay
         public void SetTheme(string value) { prefs.ThemeMode = value; }
         public void SetBadgeLayout(BadgeLayoutSettings value) { prefs.BadgeLayout = value.Copy(); }
         public void ManualRefresh() { }
-        public void OpenReleases() { ReleasePageRequests++; }
         public void ActivateTarget() { }
         public void Quit() { }
     }

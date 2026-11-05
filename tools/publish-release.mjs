@@ -4,9 +4,7 @@ import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { stableVersion } from './release-policy.mjs';
 
-export const RELEASE_FILES = ['codex-usage-overlay-windows-x64.zip', 'codex-usage-overlay-setup-windows-x64.exe',
-  'SHA256SUMS.txt', 'codex-usage-overlay.intoto.jsonl'];
-const CHECKSUM_SUBJECTS = [...RELEASE_FILES.slice(0, 2), 'codex-usage-overlay/UsageOverlay.exe'];
+export const RELEASE_FILES = ['codex-usage-overlay-windows-x64.zip', 'SHA256SUMS.txt', 'codex-usage-overlay.intoto.jsonl'];
 const digest = bytes => `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`;
 
 export function releaseAssets(directory) {
@@ -17,16 +15,15 @@ export function releaseAssets(directory) {
     const bytes = fs.readFileSync(file);
     return { name, bytes, size: bytes.length, digest: digest(bytes) };
   });
-  const lines = assets.find(asset => asset.name === 'SHA256SUMS.txt').bytes.toString('utf8').trim().split(/\r?\n/);
-  if (lines.length !== CHECKSUM_SUBJECTS.length) throw new Error('Expected the ZIP, Setup and app EXE checksums.');
+  const lines = assets[1].bytes.toString('utf8').trim().split(/\r?\n/);
+  if (lines.length !== 2) throw new Error('Expected the ZIP and EXE checksums.');
   const expected = new Map();
   for (const line of lines) {
-    const match = /^([0-9a-f]{64})  (.+)$/.exec(line);
-    if (!match || !CHECKSUM_SUBJECTS.includes(match[2]) || expected.has(match[2])) throw new Error('Invalid or duplicate release checksum.');
+    const match = /^([0-9a-f]{64})  (codex-usage-overlay-windows-x64\.zip|codex-usage-overlay\/UsageOverlay\.exe)$/.exec(line);
+    if (!match || expected.has(match[2])) throw new Error('Invalid or duplicate release checksum.');
     expected.set(match[2], `sha256:${match[1]}`);
   }
   if (expected.get(assets[0].name) !== assets[0].digest) throw new Error('Release ZIP checksum mismatch.');
-  if (expected.get(assets[1].name) !== assets[1].digest) throw new Error('Release Setup checksum mismatch.');
   return assets;
 }
 
@@ -78,13 +75,13 @@ export async function publishRelease({ repo, tag, sha, assets, runId }, client) 
   if (await tagCommit(client, prefix, tag) !== sha) throw new Error('Remote tag moved away from the attested source.');
   await assertUnusedTag(client, prefix, tag);
   const notes = [
-    `Windows x64 portable and Setup builds for ${tag}.`, '', `Source commit: \`${sha}\`.`,
+    `Windows x64 portable build for ${tag}.`, '', `Source commit: \`${sha}\`.`,
     `Build and provenance: https://github.com/${repo}/actions/runs/${runId}`, '',
-    'Run the Setup EXE to install, or extract the portable ZIP and keep its whole folder together.',
+    'Download and extract the portable ZIP; keep the whole folder together.',
     'Node.js and an authenticated Codex CLI must already be installed on the target PC.',
     'GitHub build provenance is included; this is not Windows Authenticode signing.', '',
-    'Verify the file you downloaded using its matching command:', '```shell',
-    ...RELEASE_FILES.slice(0, 2).map(name => `gh attestation verify ${name} --repo ${repo} --bundle codex-usage-overlay.intoto.jsonl --source-ref refs/tags/${tag} --source-digest ${sha} --signer-workflow ${repo}/.github/workflows/windows-build.yml --deny-self-hosted-runners`),
+    'Verify the ZIP with:', '```shell',
+    `gh attestation verify codex-usage-overlay-windows-x64.zip --repo ${repo} --bundle codex-usage-overlay.intoto.jsonl --source-ref refs/tags/${tag} --source-digest ${sha} --signer-workflow ${repo}/.github/workflows/windows-build.yml --deny-self-hosted-runners`,
     '```'
   ].join('\n');
   const draft = await client.request('POST', `${prefix}/releases`, {

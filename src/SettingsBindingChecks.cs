@@ -52,12 +52,6 @@ namespace PersonalUsageOverlay
                     && Field<Panel[]>(window, "pages").Length == 2
                     && typeof(SettingsWindow).GetField("indicatorChoice", BindingFlags.Instance | BindingFlags.NonPublic) == null;
                 CheckCommonSettingsDisplay(checks, window, host);
-                string preferencesBeforeUpdateCheck = new JavaScriptSerializer().Serialize(host.Prefs);
-                UsagePresentation observationBeforeUpdateCheck = host.Presentation;
-                ClickOwnControl(Field<ThemedButton>(window, "updateCheck"));
-                checks["settings_update_check_only_requests_release_page_without_mutating_account_or_preferences"] = host.ReleasePageRequests == 1
-                    && Object.ReferenceEquals(observationBeforeUpdateCheck, host.Presentation)
-                    && new JavaScriptSerializer().Serialize(host.Prefs) == preferencesBeforeUpdateCheck;
 
                 reset.Checked = false;
                 checks["settings_binding_reset_date_off_keeps_inline_countdown_at_compact_height"] = OptionsMatch(preview, host, false, true)

@@ -15,7 +15,6 @@ namespace PersonalUsageOverlay
         void SetTheme(string mode);
         void SetBadgeLayout(BadgeLayoutSettings layout);
         void ManualRefresh();
-        void OpenReleases();
         void ActivateTarget();
         void Quit();
     }
