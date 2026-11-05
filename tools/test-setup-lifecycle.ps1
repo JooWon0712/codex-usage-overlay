@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true,ParameterSetName='Integration')][string]$InstalledPath,
     [Parameter(Mandatory=$true,ParameterSetName='Integration')][string]$PortablePath,
     [Parameter(Mandatory=$true,ParameterSetName='Integration')][string]$TestRoot,
-    [Parameter(Mandatory=$true,ParameterSetName='TimestampTest')][switch]$TimestampSelfTest
+    [Parameter(Mandatory=$true,ParameterSetName='TimestampTest')][switch]$TimestampSelfTest,
+    [Parameter(Mandatory=$true,ParameterSetName='ArgumentTest')][switch]$ArgumentSelfTest
 )
 $ErrorActionPreference = 'Stop'
 
@@ -15,6 +16,29 @@ function Convert-LifecycleUtcTicks([object]$Value) {
     if ($Value -is [DateTime]) { return $Value.ToUniversalTime().Ticks }
     if ($Value -isnot [string]) { throw 'Unsupported fixture timestamp type.' }
     return [DateTimeOffset]::Parse($Value, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None).UtcDateTime.Ticks
+}
+
+function New-LifecycleLoggedArguments([string[]]$Prefix, [string]$LogPath) {
+    if ([string]::IsNullOrWhiteSpace($LogPath) -or $LogPath.Contains('"')) { throw 'Invalid fixture log path.' }
+    # Keep concatenation separate from comma-separated array literals. Otherwise
+    # PowerShell can turn the log option, path and quote into three arguments.
+    return @($Prefix) + @('/LOG="' + $LogPath + '"')
+}
+
+if ($ArgumentSelfTest) {
+    $prefixes = @(
+        @{ name = 'silent-update'; value = @('/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') },
+        @{ name = 'permitted-update'; value = @('/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ALLOWAPPCLOSE=1') },
+        @{ name = 'permitted-uninstall'; value = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ALLOWAPPCLOSE=1') }
+    )
+    $logPath = 'C:\disposable test path\fixture.log'
+    foreach ($case in $prefixes) {
+        $arguments = @(New-LifecycleLoggedArguments $case.value $logPath)
+        if ($arguments.Count -ne $case.value.Count + 1 -or $arguments[-1] -cne '/LOG="C:\disposable test path\fixture.log"') { throw "Fixture log option split into multiple arguments: $($case.name)" }
+        for ($index = 0; $index -lt $case.value.Count; $index++) { if ($arguments[$index] -cne $case.value[$index]) { throw 'Fixture command prefix changed.' } }
+    }
+    [pscustomobject]@{ passed = $prefixes.Count; failed = 0; checks = @($prefixes | ForEach-Object name) } | ConvertTo-Json -Depth 3
+    exit 0
 }
 
 if ($TimestampSelfTest) {
@@ -48,17 +72,59 @@ $portableExe = [IO.Path]::GetFullPath((Join-Path $PortablePath 'UsageOverlay.exe
 $installedExe = [IO.Path]::GetFullPath((Join-Path $InstalledPath 'UsageOverlay.exe'))
 if (-not $portableExe.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Portable fixture must be inside disposable test directory.' }
 if (@(Get-Process -Name UsageOverlay -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Fixture requires no other running Overlay process.' }
+$script:LifecycleDiagnosticChecks = New-Object 'System.Collections.Generic.List[object]'
+$script:LifecycleDiagnosticRuns = New-Object 'System.Collections.Generic.List[object]'
 
 function Assert-Lifecycle([bool]$Condition, [string]$Name) {
+    $script:LifecycleDiagnosticChecks.Add([pscustomobject]@{ name = $Name; passed = $Condition; utc = [DateTime]::UtcNow.ToString('o') })
     if (-not $Condition) { throw "Failed: $Name" }
     Write-Output ('Passed: ' + $Name)
 }
 function Invoke-LifecycleSetup([string]$File, [string[]]$Arguments) {
+    $observation = [pscustomobject]@{ fileName = [IO.Path]::GetFileName($File); arguments = @($Arguments); startedUtc = [DateTime]::UtcNow.ToString('o'); completedUtc = $null; exitCode = $null; timedOut = $false }
+    $script:LifecycleDiagnosticRuns.Add($observation)
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -PassThru
     try {
-        if (-not $process.WaitForExit(90000)) { throw "Setup fixture process did not exit: $File" }
-        $process.Refresh(); return $process.ExitCode
-    } finally { $process.Dispose() }
+        if (-not $process.WaitForExit(90000)) { $observation.timedOut = $true; throw "Setup fixture process did not exit: $File" }
+        $process.Refresh(); $observation.exitCode = $process.ExitCode
+        if ($process.ExitCode -ne 0) {
+            Write-Host ('Fixture command returned exit code ' + $process.ExitCode + ': ' + $observation.fileName)
+            Write-Host ('Exact fixture arguments: ' + ($Arguments | ConvertTo-Json -Compress))
+            foreach ($argument in $Arguments) {
+                if ($argument -match '^/LOG="(?<path>[^"]+)"$') {
+                    $log = [IO.Path]::GetFullPath($Matches.path)
+                    if (-not $log.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Fixture log escaped its disposable test directory.' }
+                    if ([IO.File]::Exists($log)) {
+                        Write-Host ('Last fixture log lines: ' + $log)
+                        Get-Content -LiteralPath $log -Tail 50 | ForEach-Object { Write-Host $_ }
+                    } else { Write-Host ('Fixture log was not created: ' + $log) }
+                }
+            }
+        }
+        return $process.ExitCode
+    } finally { $observation.completedUtc = [DateTime]::UtcNow.ToString('o'); $process.Dispose() }
+}
+
+function Save-LifecycleDiagnostics($Failure) {
+    try {
+        $project = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+        $destination = [IO.Path]::GetFullPath((Join-Path $project ('.build\setup-integration-diagnostics\' + [IO.Path]::GetFileName($root))))
+        if (-not $destination.StartsWith($project + '\.build\setup-integration-diagnostics\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected diagnostics directory.' }
+        $current = $destination
+        while ($true) {
+            if ((Test-Path -LiteralPath $current) -and ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse points are not supported in diagnostics paths.' }
+            if ($current.Equals($project, [StringComparison]::OrdinalIgnoreCase)) { break }
+            $current = [IO.Path]::GetDirectoryName($current)
+        }
+        $null = [IO.Directory]::CreateDirectory($destination)
+        foreach ($file in @(Get-ChildItem -LiteralPath $root -File | Where-Object { $_.Extension -in @('.log', '.json') })) {
+            if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+            [IO.File]::Copy($file.FullName, (Join-Path $destination $file.Name), $true)
+        }
+        $summary = [pscustomobject]@{ failure = $Failure.Exception.Message; utc = [DateTime]::UtcNow.ToString('o'); checks = $script:LifecycleDiagnosticChecks.ToArray(); commands = $script:LifecycleDiagnosticRuns.ToArray() }
+        [IO.File]::WriteAllText((Join-Path $destination 'lifecycle-checks.json'), ($summary | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+        Write-Host ('Fixture failure diagnostics saved: ' + $destination)
+    } catch { Write-Host ('Could not save fixture diagnostics: ' + $_.Exception.Message) }
 }
 function Start-LifecycleFixture([string]$Executable, [string]$Name, [switch]$Legacy) {
     $ready = Join-Path $root ($Name + '.json')
@@ -119,12 +185,12 @@ try {
     $currentIds = @(Get-Process -Name UsageOverlay -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
     Assert-Lifecycle ($currentIds.Count -eq 2 -and @($currentIds | Where-Object { $_ -notin $expectedIds }).Count -eq 0) 'portable and installed copies share exactly one parent and its owned child'
     $before = Get-LifecycleFileSnapshot
-    $code = Invoke-LifecycleSetup $SetupPath ($baseArguments + @('/LOG="' + (Join-Path $root 'running-update-refused.log') + '"'))
+    $code = Invoke-LifecycleSetup $SetupPath (New-LifecycleLoggedArguments $baseArguments (Join-Path $root 'running-update-refused.log'))
     Assert-Lifecycle ($code -ne 0) 'unattended update requires explicit close permission'
     Assert-Lifecycle (Test-LifecycleAlive $fixture) 'refused update leaves both fixture processes alive'
     Assert-Lifecycle ((Get-LifecycleFileSnapshot) -eq $before) 'refused update leaves every installed file unchanged'
     $timer = [Diagnostics.Stopwatch]::StartNew()
-    $code = Invoke-LifecycleSetup $SetupPath ($baseArguments + @('/ALLOWAPPCLOSE=1', '/LOG="' + (Join-Path $root 'running-update.log') + '"'))
+    $code = Invoke-LifecycleSetup $SetupPath (New-LifecycleLoggedArguments ($baseArguments + '/ALLOWAPPCLOSE=1') (Join-Path $root 'running-update.log'))
     Assert-Lifecycle ($code -eq 0) 'permitted update completes'
     Wait-LifecycleExited $fixture
     Assert-Lifecycle ($timer.ElapsedMilliseconds -ge 5300) 'update waits through child drain and parent post-mutex exit delay'
@@ -132,7 +198,7 @@ try {
 
     $fixture = Start-LifecycleFixture $portableExe 'legacy-running' -Legacy
     $before = Get-LifecycleFileSnapshot
-    $code = Invoke-LifecycleSetup $SetupPath ($baseArguments + @('/ALLOWAPPCLOSE=1', '/LOG="' + (Join-Path $root 'legacy-refused.log') + '"'))
+    $code = Invoke-LifecycleSetup $SetupPath (New-LifecycleLoggedArguments ($baseArguments + '/ALLOWAPPCLOSE=1') (Join-Path $root 'legacy-refused.log'))
     Assert-Lifecycle ($code -ne 0) 'unidentifiable legacy fixture is refused even with close permission'
     Assert-Lifecycle (Test-LifecycleAlive $fixture) 'legacy refusal does not signal or kill fixture'
     Assert-Lifecycle ((Get-LifecycleFileSnapshot) -eq $before) 'legacy refusal preserves installed bytes'
@@ -142,16 +208,17 @@ try {
     $fixture = Start-LifecycleFixture $installedExe 'installed-running'
     $uninstaller = Join-Path $InstalledPath 'unins000.exe'
     $before = Get-LifecycleFileSnapshot
-    $code = Invoke-LifecycleSetup $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG="' + (Join-Path $root 'running-uninstall-refused.log') + '"')
+    $code = Invoke-LifecycleSetup $uninstaller (New-LifecycleLoggedArguments @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') (Join-Path $root 'running-uninstall-refused.log'))
     Assert-Lifecycle ($code -ne 0) 'unattended uninstall requires explicit close permission'
     Assert-Lifecycle (Test-LifecycleAlive $fixture) 'refused uninstall leaves fixture alive'
     Assert-Lifecycle ((Get-LifecycleFileSnapshot) -eq $before) 'refused uninstall leaves installed bytes unchanged'
-    $code = Invoke-LifecycleSetup $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ALLOWAPPCLOSE=1', '/LOG="' + (Join-Path $root 'running-uninstall.log') + '"')
+    $code = Invoke-LifecycleSetup $uninstaller (New-LifecycleLoggedArguments @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/ALLOWAPPCLOSE=1') (Join-Path $root 'running-uninstall.log'))
     Assert-Lifecycle ($code -eq 0) 'permitted uninstall completes'
     Wait-LifecycleExited $fixture
     Assert-Lifecycle (-not [IO.File]::Exists($installedExe)) 'running uninstall removes executable only after actual exit'
     $fixture.Parent.Dispose(); $fixture.Child.Dispose(); $fixture = $null
 }
+catch { Save-LifecycleDiagnostics $_; throw }
 finally {
     if ($fixture) {
         Close-LifecycleFixture $fixture

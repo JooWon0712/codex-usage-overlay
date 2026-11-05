@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'setup.ps1') -CompilerPath $CompilerPath
 $checks = New-Object 'System.Collections.Generic.List[string]'
+$script:SetupDiagnosticRuns = New-Object 'System.Collections.Generic.List[object]'
 function Assert-SetupTest([bool]$Condition, [string]$Name) {
     if (-not $Condition) { throw "Failed: $Name" }
     $checks.Add($Name)
@@ -23,10 +24,45 @@ function Assert-SetupTestHashes([string]$Directory, [hashtable]$Expected, [strin
     }
 }
 function Invoke-SetupTestProcess([string]$File, [string[]]$Arguments) {
+    $observation = [pscustomobject]@{ fileName = [IO.Path]::GetFileName($File); arguments = @($Arguments); startedUtc = [DateTime]::UtcNow.ToString('o'); completedUtc = $null; exitCode = $null; timedOut = $false }
+    $script:SetupDiagnosticRuns.Add($observation)
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -PassThru
-    if (-not $process.WaitForExit(90000)) { throw "Test process did not finish in 90 seconds: $File" }
-    $process.Refresh()
-    return $process.ExitCode
+    try {
+        if (-not $process.WaitForExit(90000)) { $observation.timedOut = $true; throw "Test process did not finish in 90 seconds: $File" }
+        $process.Refresh(); $observation.exitCode = $process.ExitCode
+        if ($process.ExitCode -ne 0) {
+            Write-Host ('Setup test command returned exit code ' + $process.ExitCode + ': ' + $observation.fileName)
+            Write-Host ('Exact Setup test arguments: ' + ($Arguments | ConvertTo-Json -Compress))
+            foreach ($argument in $Arguments) {
+                if ($argument -match '^/LOG="(?<path>[^"]+)"$') {
+                    $log = [IO.Path]::GetFullPath($Matches.path)
+                    if (-not $log.StartsWith($testRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Setup test log escaped its disposable test directory.' }
+                    if ([IO.File]::Exists($log)) {
+                        Write-Host ('Last Setup test log lines: ' + $log)
+                        Get-Content -LiteralPath $log -Tail 50 | ForEach-Object { Write-Host $_ }
+                    } else { Write-Host ('Setup test log was not created: ' + $log) }
+                }
+            }
+        }
+        return $process.ExitCode
+    } finally { $observation.completedUtc = [DateTime]::UtcNow.ToString('o'); $process.Dispose() }
+}
+
+function Save-SetupIntegrationDiagnostics($Failure) {
+    try {
+        $diagnosticRoot = Join-Path $PSScriptRoot '.build\setup-integration-diagnostics'
+        $destination = Assert-CuoPortableChildPath (Join-Path $diagnosticRoot ([IO.Path]::GetFileName($testRoot))) $diagnosticRoot
+        Assert-CuoPortableNoReparsePoint $destination $PSScriptRoot
+        $null = [IO.Directory]::CreateDirectory($destination)
+        # Top-level fixture logs/readiness records contain no account session.
+        foreach ($file in @(Get-ChildItem -LiteralPath $testRoot -File | Where-Object { $_.Extension -in @('.log', '.json') })) {
+            if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+            [IO.File]::Copy($file.FullName, (Join-Path $destination $file.Name), $true)
+        }
+        $summary = [pscustomobject]@{ failure = $Failure.Exception.Message; utc = [DateTime]::UtcNow.ToString('o'); passedChecks = $checks.ToArray(); commands = $script:SetupDiagnosticRuns.ToArray() }
+        [IO.File]::WriteAllText((Join-Path $destination 'setup-checks.json'), ($summary | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+        Write-Host ('Setup failure diagnostics saved: ' + $destination)
+    } catch { Write-Host ('Could not save Setup diagnostics: ' + $_.Exception.Message) }
 }
 function Assert-SetupTestShortcut([string]$Path, [string]$Target) {
     $shell = New-Object -ComObject WScript.Shell
@@ -96,6 +132,8 @@ $setupVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($setupExe)
 Assert-SetupTest ([Version]$setupVersion.FileVersion -eq [Version]$expectedVersion) 'Setup version matches application source'
 & (Join-Path $PSScriptRoot 'tools\test-setup-lifecycle.ps1') -TimestampSelfTest | Out-Host
 Assert-SetupTest ($LASTEXITCODE -eq 0) 'fixture timestamp identity preserves offset and fractional ticks across PowerShell versions'
+& (Join-Path $PSScriptRoot 'tools\test-setup-lifecycle.ps1') -ArgumentSelfTest | Out-Host
+Assert-SetupTest ($LASTEXITCODE -eq 0) 'fixture log path and explicit close permission remain separate complete arguments'
 
 if ($Integration) {
     # This switch is intentionally unavailable on personal PCs or self-hosted runners.
@@ -120,14 +158,14 @@ if ($Integration) {
     Assert-CuoPortablePayload $payload $PSScriptRoot
     $payloadHashes = Get-SetupTestHashes $payload
     $integrationCompiler = Resolve-CuoSetupCompiler $CompilerPath
-    $olderFixture = New-SyntheticSetupFixture -Root $testRoot -Payload $payload -Compiler $integrationCompiler
-    $olderHashes = Get-SetupTestHashes $olderFixture.Payload
-    Assert-SetupTest ([Version]([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $olderFixture.Payload 'UsageOverlay.exe'))).FileVersion -eq [Version]'0.0.1.0') 'isolated older-version fixture has synthetic EXE version 0.0.1.0'
     $portable = Join-Path $testRoot 'portable'
     $null = [IO.Directory]::CreateDirectory($portable)
     foreach ($name in $script:CuoPortableFiles) { [IO.File]::Copy((Join-Path $payload $name), (Join-Path $portable $name), $false) }
     $installed = $null
     try {
+        $olderFixture = New-SyntheticSetupFixture -Root $testRoot -Payload $payload -Compiler $integrationCompiler
+        $olderHashes = Get-SetupTestHashes $olderFixture.Payload
+        Assert-SetupTest ([Version]([Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $olderFixture.Payload 'UsageOverlay.exe'))).FileVersion -eq [Version]'0.0.1.0') 'isolated older-version fixture has synthetic EXE version 0.0.1.0'
         $baseArguments = @('/CURRENTUSER', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-')
         $code = Invoke-SetupTestProcess $olderFixture.Setup ($baseArguments + @('/TASKS=', ('/LOG="' + (Join-Path $testRoot 'first-synthetic-older.log') + '"')))
         Assert-SetupTest ($code -eq 0) 'first install of synthetic older version succeeds without starting the app'
@@ -189,6 +227,7 @@ if ($Integration) {
         Assert-SetupTestHashes $payload $payloadHashes
         Assert-SetupTest ((Get-SetupTestAutostartSnapshot) -eq $autoBefore) 'Run keys and Startup files are unchanged'
     }
+    catch { Save-SetupIntegrationDiagnostics $_; throw }
     finally {
         # Failures retain logs and installed fixtures for the disposable runner's
         # diagnostic artifact. Successful runs remove only known temporary files.
