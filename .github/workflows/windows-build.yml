@@ -65,10 +65,20 @@ jobs:
           $failed = @($result.checks.psobject.Properties | Where-Object Value -eq $false)
           if ($process.ExitCode -ne 0 -or -not $result.passed -or $failed.Count -gt 0) {
             $failed.Name | Write-Output
+            $result.settingsDpi | ConvertTo-Json -Depth 8 -Compress | Write-Output
             throw 'Developer checks failed.'
           }
           $count = @($result.checks.psobject.Properties).Count
           "Developer checks passed: $count" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Preserve failing developer-check observations
+        if: failure() && hashFiles('.build/ci-self-test.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: check-diagnostics-${{ github.run_number }}-${{ github.run_attempt }}
+          path: .build/ci-self-test.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Record final file hashes
         run: |
