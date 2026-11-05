@@ -44,7 +44,7 @@ Node와 Codex는 기존 설치를 사용하며 포터블 폴더에 포함되지 
 
 ## Setup 설치와 수동 업데이트
 
-0.7.0 소스에는 설치형 `codex-usage-overlay-setup-windows-x64.exe`를 추가했습니다. 아직 0.7.0을 게시하지 않았으며 기존 v0.6.18 릴리스는 포터블 그대로 유지합니다. 두 형식은 같은 앱 파일을 사용하고 Node.js와 인증된 Codex CLI는 별도로 준비해야 합니다.
+0.7.0부터 설치형 `codex-usage-overlay-setup-windows-x64.exe`와 포터블 ZIP을 함께 빌드합니다. 공개된 파일은 Releases에서 확인하며 기존 v0.6.18 포터블 릴리스도 유지합니다. 두 형식은 같은 앱 파일을 사용하고 Node.js와 인증된 Codex CLI는 별도로 준비해야 합니다.
 
 1. Releases에서 Setup을 내려받아 실행합니다. 관리자 권한 없이 현재 사용자에게 설치합니다.
 2. 기본 위치는 `%LOCALAPPDATA%\Programs\CodexUsageOverlay`입니다. 시작 메뉴 바로가기를 만들며 바탕 화면 바로가기는 선택합니다. 설치 후 앱은 직접 실행합니다.

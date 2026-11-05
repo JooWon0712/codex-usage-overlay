@@ -3,7 +3,7 @@ Codex 잔여 한도 오버레이 · 최소 기능 프로토타입
 배포와 실행
 현재 소스 버전은 0.7.0이며 기본 표시 위치는 실제 세션 제목 아래입니다.
 다운로드 목록: https://github.com/JooWon0712/codex-usage-overlay/releases
-0.7.0 Setup은 아직 게시 전이며 기존 v0.6.18 포터블 릴리스는 그대로 유지합니다.
+0.7.0부터 Setup과 포터블 ZIP을 함께 빌드하며 공개된 파일은 다운로드 목록에서 확인합니다. 기존 v0.6.18 포터블 릴리스도 유지합니다.
 새 릴리스 자산은 codex-usage-overlay-windows-x64.zip, codex-usage-overlay-setup-windows-x64.exe,
 SHA256SUMS.txt, codex-usage-overlay.intoto.jsonl 네 개입니다. 앱 EXE는 ZIP과 Setup 안에 포함됩니다.
 정식 버전 태그의 빌드/검사/출처 증명이 성공하면 게시하며 공개 여부는 다운로드 목록에서 확인하세요.
