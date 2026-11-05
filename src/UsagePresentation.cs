@@ -9,12 +9,12 @@ namespace PersonalUsageOverlay
     // Formats an observation without reading an account or touching any window.
     internal sealed class UsagePresentation
     {
-        public readonly string MainText, DetailText, Details, ResetText, ResetDateText, CountdownText, FailureDetails;
+        public readonly string MainText, DetailText, ResetText, ResetDateText, CountdownText, FailureDetails;
         public readonly bool HasQueryFailure;
         public readonly string PlanText;
         public readonly double? LowWeeklyRemaining;
         public readonly UsageTone Tone;
-        private UsagePresentation(string mainText, string detailText, ResetPresentation reset, string details,
+        private UsagePresentation(string mainText, string detailText, ResetPresentation reset,
             double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails, string planText)
         {
             MainText = mainText;
@@ -22,7 +22,6 @@ namespace PersonalUsageOverlay
             ResetText = reset.Combined;
             ResetDateText = reset.Date;
             CountdownText = reset.Countdown;
-            Details = details;
             LowWeeklyRemaining = lowWeeklyRemaining;
             Tone = tone;
             HasQueryFailure = hasQueryFailure;
@@ -42,7 +41,7 @@ namespace PersonalUsageOverlay
         internal bool HasSameDisplayAs(UsagePresentation prior)
         {
             return prior != null && prior.MainText == MainText && prior.DetailText == DetailText && prior.PlanText == PlanText
-                && prior.ResetDateText == ResetDateText && prior.CountdownText == CountdownText && prior.Details == Details
+                && prior.ResetDateText == ResetDateText && prior.CountdownText == CountdownText
                 && prior.LowWeeklyRemaining == LowWeeklyRemaining && prior.Tone == Tone
                 && prior.HasQueryFailure == HasQueryFailure && prior.FailureDetails == FailureDetails;
         }
@@ -72,7 +71,7 @@ namespace PersonalUsageOverlay
             };
             var reset = WeeklyResetText(windows, startedAt, zone, true);
             return new UsagePresentation("주간 96% 남음", "갱신 " + TimeText(startedAt.ToString("o", CultureInfo.InvariantCulture), zone) + " · 예시",
-                reset, "설정 미리보기용 예시 데이터", null, UsageTone.Normal, false, String.Empty, "Plus");
+                reset, null, UsageTone.Normal, false, String.Empty, "Plus");
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone)
@@ -88,17 +87,10 @@ namespace PersonalUsageOverlay
             fresh = status == "ok" && fresh;
             double? lowWeekly = WeeklyQuotaWarning.Remaining(state, now);
             var parts = new List<string>();
-            var resets = new List<string>();
             foreach (var window in windows)
             {
                 string label = WindowLabel(window);
                 parts.Add(label + " " + window.remainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%");
-                DateTimeOffset reset;
-                // The weekly schedule is shown once, with its freshness and D-day.
-                if (window.windowDurationMins != QuotaPeriods.WeeklyMinutes && TryReset(window.resetsAt, zone, out reset))
-                {
-                    resets.Add((fresh ? "" : "이전 ") + label + " 초기화: " + reset.ToString("MM/dd HH:mm:ss zzz", CultureInfo.InvariantCulture));
-                }
             }
 
             string mainText = parts.Count > 0 ? (fresh ? "" : "이전 값 · ") + string.Join(" · ", parts.ToArray()) + " 남음" : status == "loading" ? "한도 확인 중" : "한도 확인 불가";
@@ -106,11 +98,6 @@ namespace PersonalUsageOverlay
             if (lowWeekly.HasValue)
                 detailText = (lowWeekly.Value == 0 ? "주간 한도 소진" : "주간 한도 부족") + " · 갱신 " + TimeText(state.observedAt, zone);
             ResetPresentation resetText = WeeklyResetText(windows, now, zone, fresh);
-            string details = "연결된 Codex 계정의 한도\n" + detailText + "\n" + resetText.Combined;
-            if (resets.Count > 0)
-                details += "\n" + string.Join("\n", resets.ToArray());
-            if (state.reason != null)
-                details += "\n상태: " + FriendlyReason(state.reason);
             var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
             bool hasQueryFailure = IsQueryFailure(state);
             string planName = PlanName(state.planType);
@@ -118,7 +105,7 @@ namespace PersonalUsageOverlay
                 && observed <= now && state.reason != "account_changed";
             string planText = hasPlanObservation && planName != null ? (fresh ? "" : "이전 ") + planName
                 : status == "loading" && state.observedAt == null ? "요금제 확인 중" : "요금제 확인 불가";
-            return new UsagePresentation(mainText, detailText, resetText, details, lowWeekly, tone,
+            return new UsagePresentation(mainText, detailText, resetText, lowWeekly, tone,
                 hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText);
         }
 

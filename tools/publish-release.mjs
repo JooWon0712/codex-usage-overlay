@@ -51,6 +51,16 @@ function verifyAssets(actual, expected) {
   }
 }
 
+async function assertUnusedTag(client, prefix, tag) {
+  for (let page = 1; page <= 100; page++) {
+    const releases = await client.request('GET', `${prefix}/releases?per_page=100&page=${page}`);
+    if (!Array.isArray(releases)) throw new Error('Invalid releases response.');
+    if (releases.some(item => item.tag_name === tag)) throw new Error('A release or draft already exists for this tag; no files were replaced.');
+    if (releases.length < 100) return;
+  }
+  throw new Error('Could not establish that the release tag is unused.');
+}
+
 // The injected client makes ordering/error paths testable without publishing.
 // Never replaces/deletes releases, assets or tags, including an incomplete draft.
 export async function publishRelease({ repo, tag, sha, assets, runId }, client) {
@@ -63,14 +73,7 @@ export async function publishRelease({ repo, tag, sha, assets, runId }, client) 
     throw new Error('Unexpected release asset selection.');
   const prefix = `/repos/${repo}`;
   if (await tagCommit(client, prefix, tag) !== sha) throw new Error('Remote tag moved away from the attested source.');
-  let complete = false;
-  for (let page = 1; page <= 100; page++) {
-    const releases = await client.request('GET', `${prefix}/releases?per_page=100&page=${page}`);
-    if (!Array.isArray(releases)) throw new Error('Invalid releases response.');
-    if (releases.some(item => item.tag_name === tag)) throw new Error('A release or draft already exists for this tag; no files were replaced.');
-    if (releases.length < 100) { complete = true; break; }
-  }
-  if (!complete) throw new Error('Could not establish that the release tag is unused.');
+  await assertUnusedTag(client, prefix, tag);
   const notes = [
     `Windows x64 portable build for ${tag}.`, '', `Source commit: \`${sha}\`.`,
     `Build and provenance: https://github.com/${repo}/actions/runs/${runId}`, '',
@@ -87,21 +90,22 @@ export async function publishRelease({ repo, tag, sha, assets, runId }, client) 
   });
   if (!Number.isSafeInteger(draft.id) || draft.id <= 0 || draft.tag_name !== tag || draft.draft !== true)
     throw new Error('Unexpected draft release response; publication stopped.');
+  const releasePath = `${prefix}/releases/${draft.id}`;
   try {
     const uploadBase = new URL(draft.upload_url.replace(/\{.*$/, ''));
     if (uploadBase.origin !== 'https://uploads.github.com'
-      || uploadBase.pathname.toLowerCase() !== `${prefix}/releases/${draft.id}/assets`.toLowerCase())
+      || uploadBase.pathname.toLowerCase() !== `${releasePath}/assets`.toLowerCase())
       throw new Error('Unexpected release upload host or path.');
     for (const asset of assets) {
       const url = new URL(uploadBase); url.searchParams.set('name', asset.name);
       await client.upload(url, asset.bytes);
     }
-    const stored = await client.request('GET', `${prefix}/releases/${draft.id}`);
+    const stored = await client.request('GET', releasePath);
     if (stored.id !== draft.id || stored.tag_name !== tag || stored.draft !== true)
       throw new Error('The created draft changed before publication.');
-    verifyAssets(await client.request('GET', `${prefix}/releases/${draft.id}/assets?per_page=100`), assets);
+    verifyAssets(await client.request('GET', `${releasePath}/assets?per_page=100`), assets);
     if (await tagCommit(client, prefix, tag) !== sha) throw new Error('Remote tag moved before publication.');
-    const published = await client.request('PATCH', `${prefix}/releases/${draft.id}`, { draft: false, make_latest: 'legacy' });
+    const published = await client.request('PATCH', releasePath, { draft: false, make_latest: 'legacy' });
     if (published.id !== draft.id || published.tag_name !== tag || published.draft !== false)
       throw new Error('Published release response did not match the created draft.');
     return published;

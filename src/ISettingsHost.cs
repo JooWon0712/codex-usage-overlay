@@ -4,8 +4,6 @@ namespace PersonalUsageOverlay
     internal interface ISettingsHost
     {
         Preferences Prefs { get; }
-        string MainText { get; }
-        string Details { get; }
         string PositionStatus { get; }
         string ThemeStatus { get; }
         VisualTheme Theme { get; }

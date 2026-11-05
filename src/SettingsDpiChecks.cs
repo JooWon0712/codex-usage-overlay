@@ -227,8 +227,6 @@ namespace PersonalUsageOverlay
             private readonly SettingsPreviewHost inner = new SettingsPreviewHost(VisualTheme.Dark);
             internal int MutationCalls, QueryCalls, WindowCalls;
             public Preferences Prefs { get { return inner.Prefs; } }
-            public string MainText { get { return inner.MainText; } }
-            public string Details { get { return inner.Details; } }
             public string PositionStatus { get { return inner.PositionStatus; } }
             public string ThemeStatus { get { return inner.ThemeStatus; } }
             public VisualTheme Theme { get { return inner.Theme; } }

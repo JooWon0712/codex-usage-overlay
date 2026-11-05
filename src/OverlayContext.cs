@@ -15,7 +15,6 @@ namespace PersonalUsageOverlay
     {
         public Preferences Prefs = new Preferences();
         private bool quitting;
-        public string MainText = "한도 확인 중", Details = "공식 조회 연결을 준비하고 있습니다.";
         public UsagePresentation Presentation { get; private set; }
         public DateTimeOffset StartedAt { get; private set; }
         private bool layoutSavePending;
@@ -36,8 +35,6 @@ namespace PersonalUsageOverlay
         private int contrastSignature;
         private string themeSource = "pending";
         Preferences ISettingsHost.Prefs { get { return Prefs; } }
-        string ISettingsHost.MainText { get { return MainText; } }
-        string ISettingsHost.Details { get { return Details; } }
         private TitleAnchorObservation titleAnchor;
         private string anchorStatus = "pending";
         private SettingsWindow settings;
@@ -288,50 +285,9 @@ namespace PersonalUsageOverlay
                 Send(new { command = "active", value = active });
             }
 
-            UpdateText();
+            UpdatePresentation();
             if (show)
-            {
-                Native.RECT client;
-                var origin = new Native.POINT();
-                if (Native.GetClientRect(target, out client) && Native.ClientToScreen(target, ref origin))
-                {
-                    float scale = Math.Max(96, Native.GetDpiForWindow(target)) / 96f;
-                    var rect = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
-                    titleAnchor = Prefs.Position == "sidebar" ? null : titleTracker.GetOrRequest(target, rect, scale);
-                    anchorStatus = titleAnchor == null ? "sidebar" : titleAnchor.Status;
-                    var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor);
-                    if (bounds.Width < 80 || bounds.Height < 25)
-                    {
-                        if (anchorStatus == "ok" || anchorStatus == "sidebar") anchorStatus = "no_space";
-                        badge.Hide();
-                    }
-                    else
-                    {
-                        bool changed = lastBounds != bounds || Math.Abs(badge.ScaleFactor - scale) > 0.01;
-                        badge.ScaleFactor = scale;
-                        if (changed)
-                        {
-                            badge.Bounds = bounds;
-                            badge.Invalidate();
-                            lastBounds = bounds;
-                        }
-
-                        bool reveal = !badge.Visible || badgeWasSettingsOverlay != settingsOverlayActive;
-                        try
-                        {
-                            bool prepared=!reveal || badge.Present(0);
-                            if(prepared && !badge.Visible) badge.Show();
-                            bool placed=prepared && (settingsOverlayActive ? BadgeZOrder.Place(badge.Handle,target,bounds)
-                                : Native.SetWindowPos(badge.Handle,new IntPtr(-1),bounds.X,bounds.Y,bounds.Width,bounds.Height,0x10|0x40));
-                            if(!placed || !badge.Present()) badge.Hide();
-                            badgeWasSettingsOverlay = settingsOverlayActive;
-                        }
-                        catch { badge.Hide(); }
-                    }
-                }
-                else
-                    badge.Hide();
-            }
+                UpdateBadge();
             else
                 badge.Hide();
             if (worker == null && DateTime.UtcNow >= workerRestartAfter)
@@ -341,22 +297,65 @@ namespace PersonalUsageOverlay
             }
 
             WriteDiagnostic();
-            if (settings != null && !settings.IsDisposed) settings.UpdatePositionStatus();
+            UpdateSettings();
         }
 
-        private void UpdateText()
+        private void UpdateBadge()
+        {
+            Native.RECT client;
+            var origin = new Native.POINT();
+            if (!Native.GetClientRect(target, out client) || !Native.ClientToScreen(target, ref origin))
+            {
+                badge.Hide();
+                return;
+            }
+
+            float scale = Math.Max(96, Native.GetDpiForWindow(target)) / 96f;
+            var rect = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
+            titleAnchor = Prefs.Position == "sidebar" ? null : titleTracker.GetOrRequest(target, rect, scale);
+            anchorStatus = titleAnchor == null ? "sidebar" : titleAnchor.Status;
+            var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor);
+            if (bounds.Width < 80 || bounds.Height < 25)
+            {
+                if (anchorStatus == "ok" || anchorStatus == "sidebar") anchorStatus = "no_space";
+                badge.Hide();
+                return;
+            }
+
+            bool changed = lastBounds != bounds || Math.Abs(badge.ScaleFactor - scale) > 0.01;
+            badge.ScaleFactor = scale;
+            if (changed)
+            {
+                badge.Bounds = bounds;
+                lastBounds = bounds;
+            }
+
+            bool reveal = !badge.Visible || badgeWasSettingsOverlay != settingsOverlayActive;
+            try
+            {
+                bool prepared = !reveal || badge.Present(0);
+                if (prepared && !badge.Visible) badge.Show();
+                bool placed = prepared && (settingsOverlayActive ? BadgeZOrder.Place(badge.Handle, target, bounds)
+                    : Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40));
+                if (!placed || !badge.Present()) badge.Hide();
+                badgeWasSettingsOverlay = settingsOverlayActive;
+            }
+            catch { badge.Hide(); }
+        }
+
+        private void UpdatePresentation()
         {
             var presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
-            MainText = presentation.MainText;
-            Details = presentation.Details;
             var prior = Presentation;
             if (!presentation.HasSameDisplayAs(prior))
             {
                 Presentation = presentation;
                 badge.Presentation = presentation;
-                badge.Invalidate();
             }
+        }
 
+        private void UpdateSettings()
+        {
             if (settings != null && !settings.IsDisposed)
                 settings.UpdateUsage();
         }
@@ -397,7 +396,8 @@ namespace PersonalUsageOverlay
                             if (worker == p)
                             {
                                 state = incoming;
-                                UpdateText();
+                                UpdatePresentation();
+                                UpdateSettings();
                             }
                         });
                     }
@@ -417,7 +417,8 @@ namespace PersonalUsageOverlay
                         {
                             worker = null;
                             MarkWorkerFailure("worker_process_exited");
-                            UpdateText();
+                            UpdatePresentation();
+                            UpdateSettings();
                             p.Dispose();
                         }
                     });
@@ -535,7 +536,6 @@ namespace PersonalUsageOverlay
             Prefs.BadgeLayout = layout.Copy();
             Prefs.BadgeLayout.Normalize();
             badge.LayoutSettings = Prefs.BadgeLayout;
-            badge.Invalidate();
             layoutSavePending = true;
             layoutSaveAt = DateTime.UtcNow.AddMilliseconds(400);
             lastBounds = Rectangle.Empty;
@@ -556,7 +556,6 @@ namespace PersonalUsageOverlay
                 contrastSignature = signature;
                 Theme = VisualTheme.For(value.IsDark, contrast);
                 badge.Theme = Theme;
-                badge.Invalidate();
             }
             ThemeStatus = contrast ? "Windows 고대비 색상 사용" : value.Status;
             themeSource = contrast ? "high_contrast" : value.Source;
@@ -652,7 +651,7 @@ namespace PersonalUsageOverlay
                     workerPid = worker != null && !worker.HasExited ? worker.Id : 0,
                     status = state.status,
                     observedAt = state.observedAt,
-                    mainText = MainText,
+                    mainText = Presentation.MainText,
                     detailText = Presentation.DetailText,
                     resetText = Presentation.ResetText,
                     reason = state.reason,

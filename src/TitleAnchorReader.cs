@@ -48,11 +48,6 @@ namespace PersonalUsageOverlay
 
         private sealed class SearchLimitException : Exception { }
 
-        public static TitleAnchorObservation ReadOnce(IntPtr hwnd, Rectangle clientBounds, float scale)
-        {
-            return new TitleAnchorReader().Query(hwnd, clientBounds, scale);
-        }
-
         public TitleAnchorObservation Query(IntPtr hwnd, Rectangle clientBounds, float scale)
         {
             var clock = Stopwatch.StartNew();

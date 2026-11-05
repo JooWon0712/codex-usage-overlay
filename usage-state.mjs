@@ -58,9 +58,7 @@ export class UsageState {
     if (!['ok', 'loading'].includes(this.state.status) || this.successAtMs === null || nowMs - this.successAtMs < STALE_AFTER_MS) {
       return null;
     }
-    this.state.status = 'stale';
-    this.state.reason = 'last_update_expired';
-    return this.snapshot();
+    return this.failure('last_update_expired');
   }
 
   invalidate(reason = 'account_changed') {

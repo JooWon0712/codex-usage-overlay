@@ -18,8 +18,7 @@ namespace PersonalUsageOverlay
             checks["presentation_reset_date_and_countdown_are_independent_elements"] = display.ResetDateText == "주간 초기화 11/10(화) 12:00"
                 && display.CountdownText == "D-6" && display.ResetText == display.ResetDateText + " · " + display.CountdownText;
             checks["presentation_update_clock_is_separate_from_reset_date"] = display.DetailText == "갱신 09:00:00 · Codex 계정"
-                && display.Details.Contains(display.DetailText) && display.Details.Contains(display.ResetText)
-                && display.Details.IndexOf("주간 초기화", StringComparison.Ordinal) == display.Details.LastIndexOf("주간 초기화", StringComparison.Ordinal);
+                && display.MainText == "주간 80% 남음" && !display.DetailText.Contains("주간 초기화");
 
             DateTimeOffset midnightNow = At("2026-11-04T14:59:00Z");
             UsageState midnight = State(midnightNow, At("2026-11-04T15:01:00Z").ToUnixTimeSeconds());
@@ -41,7 +40,8 @@ namespace PersonalUsageOverlay
             state.windows.Add(Window("primary", QuotaPeriods.FiveHourMinutes, now.AddHours(4).ToUnixTimeSeconds()));
             UsagePresentation secondary = UsagePresentation.Create(state, now, korea);
             checks["presentation_weekly_secondary_is_independent_of_five_hour_reset"] = secondary.ResetText == display.ResetText
-                && secondary.Details.Contains("5시간 초기화: 11/04 13:00:00 +09:00");
+                && secondary.ResetDateText == display.ResetDateText && secondary.CountdownText == display.CountdownText
+                && secondary.MainText == "주간 80% · 5시간 80% 남음" && secondary.DetailText == display.DetailText;
             state.windows.Add(Window("primary", QuotaPeriods.WeeklyMinutes, reset.ToUnixTimeSeconds()));
             checks["presentation_matching_weekly_duplicate_schedules_are_unambiguous"] = UsagePresentation.Create(state, now, korea).ResetText == display.ResetText;
             state.windows[2].resetsAt = reset.AddSeconds(1).ToUnixTimeSeconds();
@@ -67,7 +67,8 @@ namespace PersonalUsageOverlay
                 UsageState invalid = State(now, value);
                 invalid.windows.Add(Window("secondary", QuotaPeriods.FiveHourMinutes, value));
                 UsagePresentation unavailable = UsagePresentation.Create(invalid, now, korea);
-                invalidSafe &= unavailable.ResetText == "주간 초기화 확인 불가" && !unavailable.Details.Contains("5시간 초기화:");
+                invalidSafe &= unavailable.ResetText == "주간 초기화 확인 불가"
+                    && unavailable.ResetDateText == "주간 초기화 확인 불가" && unavailable.CountdownText == "확인 불가";
             }
             checks["presentation_nonfinite_missing_and_out_of_range_timestamps_are_safe"] = invalidSafe;
             checks["presentation_local_conversion_boundaries_do_not_clamp_or_throw"] = UsagePresentation.Create(State(now, 253402300799d), now, korea).ResetText == "주간 초기화 확인 불가"
@@ -192,7 +193,8 @@ namespace PersonalUsageOverlay
                 && UsagePresentation.Create(new UsageState(), now, korea).HasQueryFailure && unknown.HasQueryFailure
                 && !unknown.FailureDetails.Contains("private") && !unknown.FailureDetails.Contains("rpc_error")
                 && !unknown.FailureDetails.Contains("401") && !unknown.FailureDetails.Contains("exception-body")
-                && !unknown.Details.Contains(sensitive);
+                && unknown.MainText == "한도 확인 불가" && unknown.DetailText == "조회 실패 · 설정 창에서 다시 갱신"
+                && unknown.PlanText == "요금제 확인 불가" && unknown.ResetText == "주간 초기화 확인 불가";
             UsagePresentation missingReason = UsagePresentation.Create(new UsageState { status = "unavailable" }, now, korea);
             checks["presentation_query_unavailable_without_reason_is_generic_failure"] = missingReason.HasQueryFailure
                 && missingReason.FailureDetails.StartsWith("문제: 공식 한도 조회를 완료하지 못했습니다", StringComparison.Ordinal);

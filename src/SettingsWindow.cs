@@ -170,10 +170,10 @@ namespace PersonalUsageOverlay
             choice.AccessibleName = label; choice.DropDownStyle = ComboBoxStyle.DropDownList; choice.FlatStyle = FlatStyle.Flat; choice.DrawMode = DrawMode.OwnerDrawFixed;
             choice.Items.AddRange(items); choice.SetBounds(left, top, width, 28); choice.DrawItem += DrawChoice; AddUi(parent, choice);
         }
-        private void AddNumber(Control parent, NumericUpDown number, string label, int left, int top, int width, int min, int max)
+        private void AddNumber(Control parent, ThemedNumericUpDown number, string label, int left, int top, int width, int min, int max)
         {
             number.AccessibleName=label; number.Minimum=min; number.Maximum=max;
-            var field=new ThemedNumberField((ThemedNumericUpDown)number) { AccessibleName=label };
+            var field=new ThemedNumberField(number) { AccessibleName=label };
             field.SetBounds(left,top,width,32); AddUi(parent,field);
         }
 
@@ -266,10 +266,9 @@ namespace PersonalUsageOverlay
                 var button = control as ThemedButton; if (button != null) button.Theme = theme;
                 var check = control as ThemedCheckBox; if (check != null) check.Theme = theme;
                 var choice = control as ThemedComboBox; if (choice != null) choice.Theme = theme;
-                var number = control as ThemedNumericUpDown; if (number != null) number.Theme = theme;
                 var field = control as ThemedNumberField; if (field != null) field.Theme = theme;
                 var slider = control as ThemedTrackBar; if (slider != null) slider.Theme = theme;
-                if (control is NumericUpDown || control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
+                if (control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
             previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = theme.Muted;
             preview.Theme = theme; SetFrameTheme(theme); ApplyCaptionTheme(); Invalidate(true);

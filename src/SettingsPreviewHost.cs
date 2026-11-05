@@ -30,8 +30,6 @@ namespace PersonalUsageOverlay
             return UsagePresentation.Create(state, now, zone);
         }
         public Preferences Prefs { get { return prefs; } }
-        public string MainText { get { return presentation.MainText; } }
-        public string Details { get { return presentation.Details; } }
         public UsagePresentation Presentation { get { return presentation; } }
         internal void SetPresentation(UsagePresentation value) { presentation = value; }
         public DateTimeOffset StartedAt { get { return DateTimeOffset.Parse("2026-11-04T19:59:37+09:00", CultureInfo.InvariantCulture); } }
