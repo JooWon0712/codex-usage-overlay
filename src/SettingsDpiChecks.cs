@@ -27,6 +27,11 @@ namespace PersonalUsageOverlay
                 window.Opacity = 0;
                 window.StartPosition = FormStartPosition.Manual;
                 window.Location = new Point(-16000, -16000);
+                // These synthetic-DPI fixtures deliberately keep the full design
+                // canvas. Override the desktop's default maximum tracking size,
+                // which can clamp the first resize on small hosted displays.
+                // Production windows still use SettingsWindow.FitWorkArea.
+                window.MaximumSize = new Size(4096, 4096);
                 window.Show();
                 handle = window.Handle;
                 // Seed the fixture explicitly. These are real messages to our
