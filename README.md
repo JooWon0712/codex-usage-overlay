@@ -44,9 +44,11 @@ Node와 Codex는 기존 설치를 사용하며 포터블 폴더에 포함되지 
 
 ## 포터블 실행과 업데이트
 
-현재 GitHub Releases 배포본은 없습니다. [Windows build and provenance](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)의 성공한 실행에서 **Artifacts**를 받거나 아래 개발 절차로 포터블 폴더·ZIP을 만들 수 있습니다. 아티팩트 보관 기간은 30일이며 워크플로가 Release를 자동으로 만들지는 않습니다.
+정식 버전 태그의 빌드·검사·출처 증명이 모두 성공하면 [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에 포터블 ZIP을 자동 게시하도록 구성했습니다. 아직 실제 버전 태그나 Release를 생성하지 않았습니다. [Actions](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)의 성공한 실행에서 **Artifacts**를 받거나 아래 개발 절차로 직접 빌드할 수도 있습니다.
 
-`windows-x64-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에는 전체 포터블 폴더 `codex-usage-overlay/`, 배포 ZIP `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`가 들어갑니다. Actions 화면에서 받는 아티팩트 ZIP은 이 파일들을 담은 포장 파일이며 그 안의 배포 ZIP과 구분합니다. `dist/` 자체는 Git에서 추적하지 않습니다.
+Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`, `codex-usage-overlay.intoto.jsonl` 세 개입니다. EXE는 ZIP 안에 포함되며 별도 자산으로 게시하지 않습니다. 전체 ZIP을 풀어 사용하며 Node와 인증된 Codex CLI는 PC에 별도로 준비해야 합니다.
+
+`windows-x64-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에는 전체 포터블 폴더 `codex-usage-overlay/`, 배포 ZIP `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`가 들어가며 보관 기간은 30일입니다. Actions 화면에서 받는 아티팩트 ZIP은 이 파일들을 담은 포장 파일이며 그 안의 배포 ZIP과 구분합니다. `dist/` 자체는 Git에서 추적하지 않습니다.
 
 1. `codex-usage-overlay-windows-x64.zip`을 원하는 폴더에 압축 해제합니다.
 2. 폴더 안의 `UsageOverlay.exe`를 두 번 눌러 실행합니다. 일반 실행에는 인수가 필요하지 않습니다.
@@ -121,7 +123,7 @@ Node와 Codex는 기존 설치를 사용하며 포터블 폴더에 포함되지 
 
 ```powershell
 .\build.ps1 -PortableRuntimePaths
-node --test probe.test.mjs worker.test.mjs
+node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
 .\.build\UsageOverlay.exe --self-test .build\geometry-test.json
 .\package.test.ps1
 .\package.ps1 -PortableRuntimePaths
@@ -137,16 +139,17 @@ node --test probe.test.mjs worker.test.mjs
 
 **0.6.18의 C# 자체 검사 501개가 통과**했습니다. Pro 세 표시명, 나머지 요금제 유지와 실패·갱신 중·만료 때의 이전 값 표시를 확인했습니다. 해당 변경에서 Node 검사는 다시 실행하지 않았고 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링도 수행하지 않았습니다. Node 검사 31개 통과와 PNG 384개 렌더링은 **0.6.17의 기록**입니다. 버전별 근거와 실제 확인 범위는 [검증 기록](docs/verification-history.md)에 보존했습니다.
 
-## GitHub 빌드 출처 증명
+## GitHub 빌드 출처 증명과 릴리스
 
 [워크플로](.github/workflows/windows-build.yml)는 Windows Server 2022·Node.js 24에서 Node 검사, 패키징 검사와 C# 자체 검사를 수행하고 포터블 파일을 빌드하도록 구성돼 있습니다. 실제 계정 조회나 일반 앱 실행은 사용하지 않습니다. 각 실행의 성공 여부와 대상 커밋은 [Actions 결과](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)에서 확인하세요.
 
-| 실행 조건 | 빌드·검사 | EXE·배포 ZIP 출처 증명 |
-| --- | --- | --- |
-| `main` 대상 Pull Request | 수행 | 생성하지 않음 |
-| 이 저장소 `main`의 push 또는 `main`에서 수동 실행 | 수행 | 빌드 성공 후 생성·검증 |
+| 실행 조건 | 빌드·검사 | EXE·배포 ZIP 출처 증명 | Release 게시 |
+| --- | --- | --- | --- |
+| `main` 대상 Pull Request | 수행 | 생성하지 않음 | 하지 않음 |
+| 이 저장소 `main`의 push 또는 `main`에서 수동 실행 | 수행 | 빌드 성공 후 생성·검증 | 하지 않음 |
+| 검증된 정식 버전 태그 push | 수행 | 빌드 성공 후 생성·검증 | 모든 단계 성공 후 게시 |
 
-출처 증명 작업은 같은 실행의 빌드 아티팩트 ID로 파일을 받아 SHA-256을 대조한 뒤 EXE와 배포 ZIP을 증명합니다. 인증서 비밀키나 저장된 인증서 시크릿 대신 GitHub OIDC와 짧은 수명의 Sigstore 자격을 사용합니다. 검증은 저장소·소스 커밋·`main` 참조·워크플로와 GitHub 호스팅 실행기를 확인하며 증명 번들은 별도 `provenance-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에 30일간 보관합니다.
+출처 증명 작업은 같은 실행의 빌드 아티팩트 ID로 파일을 받아 SHA-256을 대조한 뒤 EXE와 배포 ZIP을 증명합니다. 인증서 비밀키나 저장된 인증서 시크릿 대신 GitHub OIDC와 짧은 수명의 Sigstore 자격을 사용합니다. 검증은 저장소·소스 커밋·실제 참조(`main` 또는 버전 태그)·워크플로와 GitHub 호스팅 실행기를 확인하며 증명 번들은 별도 `provenance-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에 30일간 보관합니다.
 
 이 증명은 **어느 GitHub 소스와 워크플로에서 빌드됐는지 확인하는 출처 증명**입니다. Windows Authenticode나 SmartScreen의 신뢰된 게시자 서명이 아닙니다. CI 배포본의 실행 경로 설정에는 PC별 경로 대신 `node.exe`·`codex.exe`만 들어갑니다.
 
@@ -159,7 +162,7 @@ gh run view RUN_ID --repo JooWon0712/codex-usage-overlay
 gh run download RUN_ID --repo JooWon0712/codex-usage-overlay -n windows-x64-RUN_NUMBER-RUN_ATTEMPT -D downloaded
 ```
 
-다운로드한 배포 ZIP은 다음처럼 검증합니다. 특정 커밋까지 고정하려면 실행에 표시된 전체 커밋 SHA를 `--source-digest COMMIT_SHA`로 추가합니다. 같은 명령에서 파일 경로를 `downloaded/codex-usage-overlay/UsageOverlay.exe`로 바꾸면 EXE도 검증할 수 있습니다.
+`main` 실행의 아티팩트에서 받은 배포 ZIP은 다음처럼 검증합니다. 특정 커밋까지 고정하려면 실행에 표시된 전체 커밋 SHA를 `--source-digest COMMIT_SHA`로 추가합니다. 같은 명령에서 파일 경로를 `downloaded/codex-usage-overlay/UsageOverlay.exe`로 바꾸면 EXE도 검증할 수 있습니다.
 
 ```powershell
 gh attestation verify downloaded/codex-usage-overlay-windows-x64.zip `
@@ -168,5 +171,41 @@ gh attestation verify downloaded/codex-usage-overlay-windows-x64.zip `
   --source-ref refs/heads/main `
   --deny-self-hosted-runners
 ```
+
+### Release 다운로드와 검증
+
+공개된 태그가 있으면 ZIP·체크섬·증명 번들을 함께 받을 수 있습니다. 아래 `vX.Y.Z`는 실제 공개 태그로, `SOURCE_COMMIT_FROM_RELEASE_NOTES`는 해당 Release 노트의 `Source commit` 전체 SHA로 바꿉니다.
+
+```powershell
+$tag = 'vX.Y.Z'
+$sourceSha = 'SOURCE_COMMIT_FROM_RELEASE_NOTES'
+gh release download $tag --repo JooWon0712/codex-usage-overlay `
+  -p codex-usage-overlay-windows-x64.zip -p SHA256SUMS.txt `
+  -p codex-usage-overlay.intoto.jsonl -D downloaded
+gh attestation verify downloaded/codex-usage-overlay-windows-x64.zip `
+  --bundle downloaded/codex-usage-overlay.intoto.jsonl `
+  --repo JooWon0712/codex-usage-overlay `
+  --source-ref "refs/tags/$tag" --source-digest $sourceSha `
+  --signer-workflow JooWon0712/codex-usage-overlay/.github/workflows/windows-build.yml `
+  --deny-self-hosted-runners
+```
+
+ZIP을 `downloaded/codex-usage-overlay/`에 풀면 같은 증명 번들로 그 안의 `UsageOverlay.exe`도 검증할 수 있습니다. Release 자동 게시는 앱의 자동 업데이트나 로컬 설치를 수행하지 않습니다. 업데이트는 실행 중인 앱을 X로 종료한 뒤 전체 폴더를 교체합니다.
+
+### 버전 태그로 게시하기
+
+태그는 **`vMAJOR.MINOR.PATCH` 정식 버전**만 허용합니다. 태그 `vX.Y.Z`와 `src/Program.cs`의 `AssemblyVersion`·`AssemblyFileVersion`이 모두 `X.Y.Z.0`으로 일치해야 하며 태그 커밋이 `origin/main`에 포함돼 있어야 합니다. `main`의 모든 커밋이 Release가 되는 것은 아니며 **태그 push만** 게시를 시작합니다.
+
+현재 소스 버전 기준의 관리자용 예시는 다음과 같습니다. 버전과 `main` 반영 상태를 확인한 뒤 새 태그에만 사용하며 이 예시가 이미 실행됐거나 v0.6.18이 공개됐다는 뜻은 아닙니다.
+
+```powershell
+git fetch origin
+git switch main
+git pull --ff-only
+git tag -a v0.6.18 -m "Codex Usage Overlay v0.6.18"
+git push origin v0.6.18
+```
+
+게시 작업은 권한이 분리된 별도 job에서 새 draft를 만들고 세 자산을 올린 뒤 자산별 SHA-256·크기와 태그 커밋을 확인한 후 공개합니다. 같은 태그의 Release나 draft가 이미 있으면 중단하며 덮어쓰지 않습니다. 실패 시 미공개 draft가 남을 수 있으므로 재시도 전에 상태를 확인해야 합니다.
 
 자세한 조작 설명은 [사용안내](사용안내.txt), 기본 앱 표시 조사 내용은 [기본 사용량 표시 조사](docs/native-usage-indicator.md)를 참고하세요.

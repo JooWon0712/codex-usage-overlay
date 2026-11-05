@@ -3,6 +3,7 @@ name: Windows build and provenance
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -21,6 +22,9 @@ jobs:
     timeout-minutes: 15
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      is-release: ${{ steps.metadata.outputs.is-release }}
+      source-sha: ${{ steps.metadata.outputs.source-sha }}
+      file-version: ${{ steps.metadata.outputs.file-version }}
     defaults:
       run:
         shell: pwsh
@@ -29,6 +33,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -36,9 +41,15 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
-      - name: Test worker and normalizer with synthetic data
+      - name: Validate source and release version
+        id: metadata
         run: |
-          node --test probe.test.mjs worker.test.mjs
+          node tools/release-policy.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Source or version-tag validation failed.' }
+
+      - name: Test worker, normalizer and release guards with synthetic data
+        run: |
+          node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Node tests failed.' }
 
       - name: Test portable package publication
@@ -51,6 +62,10 @@ jobs:
           if ($runtime.Node -cne 'node.exe' -or $runtime.Codex -cne 'codex.exe') {
             throw 'Distributed runtime paths must be portable executable names.'
           }
+          $fileVersion = (Get-Item -LiteralPath dist/codex-usage-overlay/UsageOverlay.exe).VersionInfo.FileVersion
+          if ($fileVersion -cne $env:EXPECTED_FILE_VERSION) { throw 'Built EXE version differs from the source version.' }
+        env:
+          EXPECTED_FILE_VERSION: ${{ steps.metadata.outputs.file-version }}
 
       - name: Run developer checks without a live Codex account
         run: |
@@ -101,15 +116,18 @@ jobs:
           retention-days: 30
 
   attest:
-    name: Attest trusted main build
+    name: Attest trusted source build
     needs: build
     # This whole job, including its OIDC/write permissions, is excluded from PRs.
     if: >-
       github.repository == 'JooWon0712/codex-usage-overlay' &&
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      ((github.ref == 'refs/heads/main' &&
+        (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) ||
+       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.is-release == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
     permissions:
       contents: read
       id-token: write
@@ -139,20 +157,92 @@ jobs:
       - name: Verify repository, source commit and workflow identity
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
         run: |
           for subject in payload/codex-usage-overlay/UsageOverlay.exe payload/codex-usage-overlay-windows-x64.zip; do
             gh attestation verify "$subject" \
               --repo "$GITHUB_REPOSITORY" \
-              --source-digest "$GITHUB_SHA" \
-              --source-ref refs/heads/main \
+              --source-digest "$SOURCE_SHA" \
+              --source-ref "$GITHUB_REF" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/windows-build.yml" \
               --deny-self-hosted-runners
           done
 
       - name: Upload portable attestation bundle
+        id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provenance-${{ github.run_number }}-${{ github.run_attempt }}
           path: ${{ steps.provenance.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: Publish verified portable release
+    needs: [build, attest]
+    if: >-
+      github.repository == 'JooWon0712/codex-usage-overlay' &&
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.outputs.is-release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out publication helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Download the exact tested build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: payload
+          merge-multiple: true
+
+      - name: Download this build's provenance bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.attest.outputs.artifact-id }}
+          path: provenance
+          merge-multiple: true
+
+      - name: Check hashes and prepare release assets
+        run: |
+          (cd payload && sha256sum --check SHA256SUMS.txt)
+          if [ ! -s provenance/attestation.json ] || [ -L provenance/attestation.json ]; then
+            echo 'Expected the nonempty actions/attest bundle.' >&2; exit 1
+          fi
+          mkdir release
+          cp payload/codex-usage-overlay-windows-x64.zip payload/SHA256SUMS.txt release/
+          cp provenance/attestation.json release/codex-usage-overlay.intoto.jsonl
+
+      - name: Verify bundled provenance against the exact tag and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
+        run: |
+          for subject in payload/codex-usage-overlay/UsageOverlay.exe release/codex-usage-overlay-windows-x64.zip; do
+            gh attestation verify "$subject" \
+              --bundle release/codex-usage-overlay.intoto.jsonl \
+              --repo "$GITHUB_REPOSITORY" \
+              --source-digest "$SOURCE_SHA" \
+              --source-ref "$GITHUB_REF" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/windows-build.yml" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Upload and publish a new release without replacing existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ needs.build.outputs.source-sha }}
+        run: |
+          node tools/publish-release.mjs release
+          echo "Release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"
