@@ -1,0 +1,148 @@
+name: Windows build and provenance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test Windows portable
+    runs-on: windows-2022
+    timeout-minutes: 15
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Test worker and normalizer with synthetic data
+        run: |
+          node --test probe.test.mjs worker.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Node tests failed.' }
+
+      - name: Test portable package publication
+        run: .\package.test.ps1
+
+      - name: Build portable package without account or machine paths
+        run: |
+          .\package.ps1 -PortableRuntimePaths
+          $runtime = Get-Content -LiteralPath dist/codex-usage-overlay/runtime-paths.json -Raw | ConvertFrom-Json
+          if ($runtime.Node -cne 'node.exe' -or $runtime.Codex -cne 'codex.exe') {
+            throw 'Distributed runtime paths must be portable executable names.'
+          }
+
+      - name: Run developer checks without a live Codex account
+        run: |
+          $report = Join-Path $PWD '.build/ci-self-test.json'
+          $process = Start-Process -FilePath (Join-Path $PWD 'dist/codex-usage-overlay/UsageOverlay.exe') `
+            -ArgumentList @('--self-test', $report) -WindowStyle Hidden -PassThru
+          if (-not $process.WaitForExit(90000)) {
+            $process.Kill()
+            throw 'Owned developer-check process timed out.'
+          }
+          $result = Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          $failed = @($result.checks.psobject.Properties | Where-Object Value -eq $false)
+          if ($process.ExitCode -ne 0 -or -not $result.passed -or $failed.Count -gt 0) {
+            $failed.Name | Write-Output
+            throw 'Developer checks failed.'
+          }
+          $count = @($result.checks.psobject.Properties).Count
+          "Developer checks passed: $count" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Record final file hashes
+        run: |
+          $subjects = @('codex-usage-overlay-windows-x64.zip', 'codex-usage-overlay/UsageOverlay.exe')
+          $lines = foreach ($subject in $subjects) {
+            $hash = (Get-FileHash -LiteralPath (Join-Path 'dist' $subject) -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $subject"
+          }
+          [IO.File]::WriteAllText((Join-Path $PWD 'dist/SHA256SUMS.txt'), ($lines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+          $summary = @('', "Build commit: $env:GITHUB_SHA", '', '```text') + $lines + @('```')
+          $summary | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload complete portable folder and archive
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  attest:
+    name: Attest trusted main build
+    needs: build
+    # This whole job, including its OIDC/write permissions, is excluded from PRs.
+    if: >-
+      github.repository == 'JooWon0712/codex-usage-overlay' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download the immutable artifact from this build job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact-id }}
+          path: payload
+          merge-multiple: true
+
+      - name: Verify transferred file hashes
+        working-directory: payload
+        run: sha256sum --check SHA256SUMS.txt
+
+      - name: Generate EXE and ZIP build provenance
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            payload/codex-usage-overlay/UsageOverlay.exe
+            payload/codex-usage-overlay-windows-x64.zip
+          push-to-registry: false
+          create-storage-record: false
+
+      - name: Verify repository, source commit and workflow identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for subject in payload/codex-usage-overlay/UsageOverlay.exe payload/codex-usage-overlay-windows-x64.zip; do
+            gh attestation verify "$subject" \
+              --repo "$GITHUB_REPOSITORY" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref refs/heads/main \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/windows-build.yml" \
+              --deny-self-hosted-runners
+          done
+
+      - name: Upload portable attestation bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: provenance-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 30

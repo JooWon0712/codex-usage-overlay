@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param()
+param([switch]$PortableRuntimePaths)
 
 $ErrorActionPreference = 'Stop'
 $script:CuoPortableName = 'codex-usage-overlay'
@@ -143,6 +143,7 @@ function Publish-CuoPortablePackage {
 }
 
 function Invoke-CuoPortablePackage {
+    param([switch]$PortableRuntimePaths)
     $project = [IO.Path]::GetFullPath($PSScriptRoot)
     $buildRoot = Assert-CuoPortableChildPath (Join-Path $project '.build') $project
     $dist = Assert-CuoPortableChildPath (Join-Path $project 'dist') $project
@@ -152,7 +153,7 @@ function Invoke-CuoPortablePackage {
     $stage = Assert-CuoPortableChildPath (Join-Path $buildRoot ('portable-stage-' + [Guid]::NewGuid().ToString('N'))) $buildRoot
     $payload = Join-Path $stage 'payload'
     $null = New-Item -ItemType Directory -Path $payload
-    & (Join-Path $project 'build.ps1') -OutputDirectory $payload
+    & (Join-Path $project 'build.ps1') -OutputDirectory $payload -PortableRuntimePaths:$PortableRuntimePaths
     foreach ($name in $script:CuoPortableFiles) {
         if ($name -notin @('UsageOverlay.exe','runtime-paths.json')) { [IO.File]::Copy((Join-Path $project $name), (Join-Path $payload $name), $false) }
     }
@@ -180,4 +181,4 @@ function Invoke-CuoPortablePackage {
     Write-Output 'No installation, application launch, automatic startup or scheduled task was performed.'
 }
 
-if ($MyInvocation.InvocationName -ne '.') { Invoke-CuoPortablePackage }
+if ($MyInvocation.InvocationName -ne '.') { Invoke-CuoPortablePackage -PortableRuntimePaths:$PortableRuntimePaths }
