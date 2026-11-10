@@ -39,6 +39,16 @@ namespace PersonalUsageOverlay
                 checks["invalid_path_entries_do_not_block_valid_entry"] = skipped.Node == files[4] && skipped.Codex == files[5];
                 var empty = RuntimeResolver.Resolve(null, app, ";;relative-path");
                 checks["empty_and_relative_path_do_not_search_current_folder"] = empty.Node == null && empty.Codex == null;
+                var installed = RuntimeResolver.Resolve(new RuntimePaths { Node = files[0], Codex = "missing.exe" },
+                    app, null, () => files[3]);
+                checks["missing_codex_uses_registered_desktop_fallback"] = installed.Node == files[0] && installed.Codex == files[3];
+                bool checkedInstalled = false;
+                var pathFirst = RuntimeResolver.Resolve(null, app, search, delegate
+                {
+                    checkedInstalled = true;
+                    return files[3];
+                });
+                checks["available_codex_on_path_skips_registered_desktop_lookup"] = pathFirst.Codex == files[5] && !checkedInstalled;
                 var malformed = RuntimeResolver.Resolve(new RuntimePaths { Node = "bad\0node.exe", Codex = "Z:codex.exe" }, app, search);
                 checks["invalid_config_uses_path_fallback"] = malformed.Node == files[4] && malformed.Codex == files[5];
                 string wrapper = Path.Combine(app, "codex.cmd");

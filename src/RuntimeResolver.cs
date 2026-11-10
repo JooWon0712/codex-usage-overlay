@@ -5,13 +5,17 @@ namespace PersonalUsageOverlay
 {
     internal static class RuntimeResolver
     {
-        public static RuntimePaths Resolve(RuntimePaths configured, string applicationDirectory, string searchPath)
+        public static RuntimePaths Resolve(RuntimePaths configured, string applicationDirectory, string searchPath,
+            Func<string> findInstalledCodex = null)
         {
             configured = configured ?? new RuntimePaths();
+            string codex = ResolveExecutable(configured.Codex, "codex.exe", applicationDirectory, searchPath);
+            if (codex == null && findInstalledCodex != null)
+                codex = findInstalledCodex();
             return new RuntimePaths
             {
                 Node = ResolveExecutable(configured.Node, "node.exe", applicationDirectory, searchPath),
-                Codex = ResolveExecutable(configured.Codex, "codex.exe", applicationDirectory, searchPath)
+                Codex = codex
             };
         }
 

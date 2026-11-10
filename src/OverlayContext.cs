@@ -54,7 +54,6 @@ namespace PersonalUsageOverlay
         private Rectangle lastBounds;
         private readonly string diagnostics;
         private DateTime lastDiagnostic = DateTime.MinValue, workerRestartAfter = DateTime.MinValue;
-        private readonly RuntimePaths runtime;
         private IntPtr workerJob;
         private EventWaitHandle openSettingsEvent;
         private RegisteredWaitHandle openSettingsWait;
@@ -100,7 +99,6 @@ namespace PersonalUsageOverlay
                 badge.Presentation = Presentation;
                 badge.LayoutSettings = Prefs.BadgeLayout;
                 UpdateTheme();
-                runtime = LoadRuntime();
                 settings = new SettingsWindow(this);
                 // The taskbar window owns the application's lifetime. Minimizing does not close it.
                 MainForm = settings;
@@ -144,7 +142,7 @@ namespace PersonalUsageOverlay
             catch
             {
             }
-            return RuntimeResolver.Resolve(configured, folder, Environment.GetEnvironmentVariable("PATH"));
+            return RuntimeResolver.Resolve(configured, folder, Environment.GetEnvironmentVariable("PATH"), InstalledCodex.FindCli);
         }
 
         private void AddHook(uint min, uint max)
@@ -368,6 +366,7 @@ namespace PersonalUsageOverlay
             bool started = false;
             try
             {
+                RuntimePaths runtime = LoadRuntime();
                 if (runtime == null || string.IsNullOrEmpty(runtime.Node) || string.IsNullOrEmpty(runtime.Codex) || !File.Exists(runtime.Node) || !File.Exists(runtime.Codex))
                     throw new IOException();
                 p = new Process();
