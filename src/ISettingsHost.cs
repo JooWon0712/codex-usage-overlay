@@ -6,6 +6,9 @@ namespace PersonalUsageOverlay
         Preferences Prefs { get; }
         string PositionStatus { get; }
         string ThemeStatus { get; }
+        string CodexConnectionStatus { get; }
+        string CodexExecutablePath { get; }
+        string LookupHistoryText { get; }
         VisualTheme Theme { get; }
         UsagePresentation Presentation { get; }
         System.DateTimeOffset StartedAt { get; }

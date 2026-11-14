@@ -35,6 +35,9 @@ namespace PersonalUsageOverlay
         public DateTimeOffset StartedAt { get { return DateTimeOffset.Parse("2026-11-04T19:59:37+09:00", CultureInfo.InvariantCulture); } }
         public string PositionStatus { get { return prefs.Position == "sidebar" ? "사이드바 · 창 기준 위치" : "본문 제목 아래 · 자동 위치 확인됨"; } }
         public string ThemeStatus { get { return theme.IsDark ? "Codex · 다크 (미리보기)" : "Codex · 라이트 (미리보기)"; } }
+        public string CodexConnectionStatus { get { return "연결 상태 예시"; } }
+        public string CodexExecutablePath { get { return null; } }
+        public string LookupHistoryText { get { return "아직 조회 기록이 없습니다."; } }
         public VisualTheme Theme { get { return theme; } }
         public void SetPosition(string value) { prefs.Position = value; }
         public void SetCoordinates(int left, int vertical) { }

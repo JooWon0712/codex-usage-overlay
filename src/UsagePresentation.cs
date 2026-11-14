@@ -249,7 +249,7 @@ namespace PersonalUsageOverlay
             catch (Exception) { return false; }
         }
 
-        private static string WindowLabel(LimitWindow window)
+        internal static string WindowLabel(LimitWindow window)
         {
             if (window.windowDurationMins == QuotaPeriods.WeeklyMinutes)
                 return "주간";
@@ -281,7 +281,7 @@ namespace PersonalUsageOverlay
             return DateTimeOffset.TryParse(iso, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
         }
 
-        private static string FriendlyReason(string reason)
+        internal static string FriendlyReason(string reason)
         {
             if (reason == "account_changed")
                 return "로그인 상태가 바뀌어 다시 확인합니다";

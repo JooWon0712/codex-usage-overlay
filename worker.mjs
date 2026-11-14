@@ -6,12 +6,15 @@ import { UsageState } from './usage-state.mjs';
 export const POLL_INTERVAL_MS = 60000;
 export const MANUAL_MIN_INTERVAL_MS = 5000;
 
+const writeMessage = value => process.stdout.write(JSON.stringify(value) + '\n');
+
 export class UsageWorker {
   constructor({
     executable = 'codex.exe',
     createClient = () => new UsageClient(executable),
     now = () => Date.now(),
-    emit = value => process.stdout.write(JSON.stringify(value) + '\n'),
+    emit = writeMessage,
+    emitLookupResult = null,
     parentPid = null,
     parentExists = pid => {
       try { process.kill(pid, 0); return true; }
@@ -22,6 +25,7 @@ export class UsageWorker {
     this.createClient = createClient;
     this.now = now;
     this.emit = emit;
+    this.emitLookupResult = emitLookupResult;
     this.parentPid = parentPid;
     this.parentExists = parentExists;
     this.onParentLost = onParentLost;
@@ -75,25 +79,30 @@ export class UsageWorker {
     const interval = manual ? MANUAL_MIN_INTERVAL_MS : POLL_INTERVAL_MS;
     if (this.lastAttemptMs !== null && nowMs - this.lastAttemptMs < interval) return Promise.resolve(false);
     this.lastAttemptMs = nowMs;
-    this.publish(this.state.begin(nowMs));
-    this.inFlight = this.query().finally(() => { this.inFlight = null; });
+    const started = this.state.begin(nowMs);
+    this.publish(started);
+    this.inFlight = this.query(manual ? 'manual' : 'automatic', started.attemptedAt)
+      .finally(() => { this.inFlight = null; });
     return this.inFlight;
   }
 
-  async query() {
+  async query(mode, attemptedAt) {
+    const generation = this.generation;
+    let snapshot;
+    let finishedAtMs;
+    let closeClient = false;
     try {
       if (!this.client || this.client.exited) {
         await this.dropClient();
-        if (this.stopping) return false;
+        if (this.stopping || generation !== this.generation) return false;
         const client = this.createClient();
         this.client = client;
         await client.connect();
-        if (this.stopping) return false;
+        if (this.stopping || generation !== this.generation) return false;
         // This connection's auth notifications can invalidate cached observations.
         // They do not guarantee immediate detection of sign-in changes in a separate desktop process.
         client.lines?.on('line', line => this.handleNotification(line));
       }
-      const generation = this.generation;
       const result = await this.client.request('account/rateLimits/read');
       if (this.stopping || generation !== this.generation) return false;
       const accountId = typeof result?.accountId === 'string' ? result.accountId : null;
@@ -101,15 +110,32 @@ export class UsageWorker {
         this.state.invalidate('account_changed');
       }
       this.lastAccountId = accountId;
-      this.publish(this.state.success(normalizeLimits(result), this.now()));
-      return true;
+      finishedAtMs = this.now();
+      snapshot = this.state.success(normalizeLimits(result), finishedAtMs);
     } catch (error) {
-      if (!this.stopping) this.publish(this.state.failure(error));
+      closeClient = true;
+      if (!this.stopping && generation === this.generation) {
+        finishedAtMs = this.now();
+        snapshot = this.state.failure(error);
+      }
+    }
+    if (snapshot) {
+      const succeeded = snapshot.status === 'ok';
+      // The desktop app may stop this worker on a terminal failure state.
+      this.emitLookupResult?.({
+        type: 'lookup-result', mode, attemptedAt,
+        finishedAt: new Date(finishedAtMs).toISOString(),
+        status: succeeded ? 'ok' : 'unavailable', reason: snapshot.reason,
+        windows: succeeded ? snapshot.windows.map(window => ({ ...window })) : [],
+      });
+      this.publish(snapshot);
+    }
+    if (closeClient) {
       // A fresh connection on the next permitted attempt prevents timed-out responses
       // and dead transports from being reused as successful reads.
       await this.dropClient();
-      return false;
     }
+    return !closeClient;
   }
 
   handleNotification(line) {
@@ -165,8 +191,8 @@ async function main() {
   let options;
   try { options = parseArguments(process.argv.slice(2)); }
   catch {
-    process.stdout.write(JSON.stringify({ type: 'state', status: 'unavailable', observedAt: null,
-      attemptedAt: null, reason: 'invalid_arguments', windows: [] }) + '\n');
+    writeMessage({ type: 'state', status: 'unavailable', observedAt: null,
+      attemptedAt: null, reason: 'invalid_arguments', windows: [] });
     process.exitCode = 1;
     return;
   }
@@ -179,7 +205,7 @@ async function main() {
     const stopped = await worker.stop();
     process.exit(stopped ? 0 : 1);
   };
-  const worker = new UsageWorker({ ...options, onParentLost: () => { void finish(); } });
+  const worker = new UsageWorker({ ...options, emitLookupResult: writeMessage, onParentLost: () => { void finish(); } });
   process.stdout.on('error', () => { void finish(); });
   process.stdin.on('error', () => { void finish(); });
   process.on('SIGINT', () => { void finish(); });

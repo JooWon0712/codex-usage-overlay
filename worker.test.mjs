@@ -21,12 +21,14 @@ const planQuota = planType => {
 
 function harness(outcomes) {
   let now = Date.parse('2020-01-01T00:00:00Z');
-  const states = [];
+  const messages = [];
+  const emit = message => messages.push(message);
   const clients = [];
   const methods = [];
   const worker = new UsageWorker({
     now: () => now,
-    emit: state => states.push(state),
+    emit,
+    emitLookupResult: emit,
     createClient: () => {
       const client = {
         lines: new EventEmitter(), exited: false, closed: false,
@@ -44,7 +46,12 @@ function harness(outcomes) {
     },
   });
   worker.start({ timers: false });
-  return { worker, states, clients, methods, advance: ms => { now += ms; } };
+  return {
+    worker, messages, clients, methods,
+    get states() { return messages.filter(message => message.type === 'state'); },
+    get lookups() { return messages.filter(message => message.type === 'lookup-result'); },
+    advance: ms => { now += ms; },
+  };
 }
 
 test('no success means unavailable rather than zero usage or fabricated 100% remaining', () => {
@@ -161,7 +168,7 @@ test('worker plan metadata uses the same rate-limit read without additional acco
   await h.worker.setActive(true);
   assert.equal(h.states.at(-1).planType, 'plus');
   assert.deepEqual(h.methods, ['account/rateLimits/read']);
-  assert.equal(/private-account|private-person|secret-access-token|email|token/.test(JSON.stringify(h.states)), false);
+  assert.equal(/private-account|private-person|secret-access-token|email|token/.test(JSON.stringify(h.messages)), false);
   await h.worker.stop();
 });
 
@@ -183,6 +190,7 @@ test('polling pauses in background and resumes only when a new read is due', asy
   await h.worker.tick();
   assert.equal(h.methods.length, 2);
   assert.equal(h.states.at(-1).status, 'stale');
+  assert.equal(h.lookups.length, 2, 'expiration does not count as a read');
   await h.worker.setActive(true);
   assert.equal(h.methods.length, 3);
   assert.deepEqual(new Set(h.methods), new Set(['account/rateLimits/read']));
@@ -206,6 +214,37 @@ test('manual requests are throttled and concurrent requests coalesce', async () 
   h.advance(1);
   await h.worker.refresh();
   assert.equal(h.methods.length, 2);
+  assert.deepEqual(h.lookups.map(lookup => lookup.mode), ['manual', 'manual']);
+  await h.worker.stop();
+});
+
+test('only completed reads emit results before their terminal state, without reusing previous quota in failures', async () => {
+  const h = harness([
+    () => { h.advance(2000); return quota(); },
+    () => { h.advance(1000); throw new Error('private exception details'); },
+    {},
+  ]);
+  await h.worker.setActive(true);
+  h.advance(3000);
+  await h.worker.refresh();
+  h.advance(4000);
+  await h.worker.refresh();
+  assert.deepEqual(h.lookups, [
+    { type: 'lookup-result', mode: 'automatic', attemptedAt: '2020-01-01T00:00:00.000Z',
+      finishedAt: '2020-01-01T00:00:02.000Z', status: 'ok', reason: null,
+      windows: normalizeLimits(quota()).windows },
+    { type: 'lookup-result', mode: 'manual', attemptedAt: '2020-01-01T00:00:05.000Z',
+      finishedAt: '2020-01-01T00:00:06.000Z', status: 'unavailable', reason: 'query_failed', windows: [] },
+    { type: 'lookup-result', mode: 'manual', attemptedAt: '2020-01-01T00:00:10.000Z',
+      finishedAt: '2020-01-01T00:00:10.000Z', status: 'unavailable', reason: 'usage_unavailable', windows: [] },
+  ]);
+  for (const result of h.lookups) {
+    const state = h.messages[h.messages.indexOf(result) + 1];
+    assert.equal(state.type, 'state');
+    assert.equal(state.attemptedAt, result.attemptedAt);
+    assert.equal(state.reason, result.reason);
+    assert.equal(state.windows[0].remainingPercent, 75);
+  }
   await h.worker.stop();
 });
 
@@ -267,7 +306,29 @@ test('an in-flight reply from before an auth change cannot restore the previous 
   assert.equal(h.states.at(-1).reason, 'account_changed');
   assert.equal(h.states.at(-1).planType, null);
   assert.deepEqual(h.states.at(-1).windows, []);
+  assert.equal(h.lookups.length, 1, 'the discarded response and the notification are not new reads');
   await h.worker.stop();
+});
+
+test('request failures after account invalidation or shutdown are discarded', async () => {
+  for (const invalidation of ['account', 'shutdown']) {
+    let reject;
+    const pending = new Promise((_, fail) => { reject = fail; });
+    const h = harness([() => pending]);
+    const refreshing = h.worker.refresh();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.methods.length, 1);
+    if (invalidation === 'account') {
+      h.clients[0].lines.emit('line', JSON.stringify({ method: 'account/updated' }));
+    } else {
+      void h.worker.stop();
+    }
+    reject(new Error('process_exited'));
+    await refreshing;
+    assert.deepEqual(h.lookups, []);
+    assert.equal(h.states.at(-1).reason, invalidation === 'account' ? 'account_changed' : null);
+    await h.worker.stop();
+  }
 });
 
 test('argument parser accepts paths with spaces and rejects invalid parent process IDs', () => {

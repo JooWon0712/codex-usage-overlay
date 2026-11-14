@@ -1,6 +1,6 @@
 # Codex Usage Overlay
 
-Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 소스 버전은 **1.0.1 포터블 버전**입니다. 설정과 PATH에서 Codex CLI를 찾지 못하면 Windows에 등록된 Codex 데스크톱 설치를 찾아 조회에 사용합니다.
+Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 소스 버전은 **1.0.2 포터블 버전**입니다.
 
 문서화된 [Codex App Server](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)의 `account/rateLimits/read`를 사용합니다. OpenAI의 공식 제품이나 공식 확장 프로그램은 아닙니다.
 
@@ -56,7 +56,7 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 
 `UsageOverlay.exe`, `worker.mjs`, `probe.mjs`, `usage-state.mjs`, `runtime-paths.json`을 같은 폴더에 유지하세요. EXE만 옮기거나 ZIP 안에서 바로 실행하지 않습니다. `Setup.exe`나 설치 스크립트 실행, 고정 경로 설치, 관리자 권한은 필요하지 않습니다.
 
-`runtime-paths.json`은 Node/Codex 실행 파일의 절대 경로 또는 EXE 폴더 기준 상대 경로를 지원합니다. 지정한 실행 파일이 없으면 `PATH`에서 `node.exe`·`codex.exe`를 찾습니다. Codex CLI를 찾지 못하면 Windows에 현재 사용자용으로 등록된 Codex 데스크톱 x64 패키지에서 찾습니다. 다른 PC에서는 그 PC의 Node/Codex 설치·계정 인증·경로 설정이 필요합니다. Codex 업데이트나 경로 변경 뒤 조회에 실패하면 오버레이를 X로 종료하고 다시 실행합니다.
+`runtime-paths.json`은 Node/Codex 실행 파일의 절대 경로 또는 EXE 폴더 기준 상대 경로를 지원합니다. 지정한 실행 파일이 없으면 `PATH`에서 `node.exe`·`codex.exe`를 찾습니다. Codex CLI를 찾지 못하면 Windows에 현재 사용자용으로 등록된 Codex 데스크톱 x64 패키지에서 찾습니다. 다른 PC에서는 그 PC의 Node/Codex 설치·계정 인증·경로 설정이 필요합니다. 실행 중 사용하던 Codex 파일이 사라지면 자동 조회나 **지금 갱신**에서 새 경로를 찾아 연결합니다.
 
 설정은 `%LOCALAPPDATA%\CodexUsageOverlay\settings.json`에 저장하므로 폴더를 옮기거나 교체해도 유지됩니다. 여러 사본을 열면 새 인스턴스 대신 기존 설정 창을 복원합니다.
 
@@ -95,6 +95,8 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 | 성공값 없음 | 확인 불가. 0%나 100%로 대체하지 않음 |
 
 실제 조회 실패 때만 **문제 확인** 버튼을 제공하며 원인·마지막 성공·시도 시각·다음 조치를 펼쳐 볼 수 있습니다. 정상·최초 연결·단순 만료에는 나타나지 않고 복구되면 닫힙니다.
+
+설정 창 상단에 **Codex CLI** 상태가 표시됩니다. **조회 기록**을 열면 선택된 실행 경로와 완료된 자동·수동 조회의 시각, 성공·실패와 잔여 한도를 확인할 수 있습니다. 최근 30건이 실행 중 메모리에 쌓입니다. **버전 정보**에서 현재 버전과 변경 내역을 확인할 수 있습니다.
 
 주간 초기화는 공식 응답의 **10080분 한도**에 있는 유효한 초기화 시각을 사용하며 Windows 표시 시간대로 보여 줍니다. D-day는 달력 날짜 차이입니다. 오늘의 미래 시각이면 `D-DAY`, 지난 시각이면 갱신 필요이며 데이터가 없거나 충돌하면 확인 불가입니다. 실패·갱신 중·오래된 값의 일정은 이전 일정으로 구분합니다.
 
@@ -139,7 +141,7 @@ node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
 
 **과거 0.6.18의 C# 자체 검사 501개가 통과**했습니다. Pro 세 표시명, 나머지 요금제 유지와 실패·갱신 중·만료 때의 이전 값 표시를 확인했습니다. 해당 변경에서 Node 검사는 다시 실행하지 않았고 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링도 수행하지 않았습니다. Node 검사 31개 통과와 PNG 384개 렌더링은 **0.6.17의 기록**이며 이 수치는 1.0.0 새 빌드의 검증 결과가 아닙니다. 버전별 근거와 실제 확인 범위는 [검증 기록](docs/verification-history.md)에 보존했습니다.
 
-**1.0.1 후보 빌드는 C# 자체 검사 503개, Node 검사 45개, 패키징 검사 14개를 통과**했습니다. 지정 경로가 사라지고 PATH가 비어 있는 조건에서 현재 등록된 Codex 데스크톱 CLI 경로를 찾는 것도 확인했습니다.
+**1.0.2 후보 빌드는 C# 자체 검사 503개, Node 검사 47개, 패키징 검사 14개를 통과**했습니다. 테스트용 프로세스로 기존 경로가 사라진 상황을 재현해 자동·수동 재연결과 새 경로 및 조회 결과 표시를 확인했습니다.
 
 ## GitHub 빌드 출처 증명과 릴리스
 

@@ -77,7 +77,16 @@ namespace PersonalUsageOverlay
         [DllImport("kernel32.dll")]
         public static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
         [DllImport("kernel32.dll")]
+        public static extern bool QueryInformationJobObject(IntPtr job, int info, out JOB_ACCOUNTING data, uint size, IntPtr returnLength);
+        [DllImport("kernel32.dll")]
         public static extern bool CloseHandle(IntPtr handle);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct JOB_ACCOUNTING
+        {
+            public long UserTime, KernelTime, PeriodUserTime, PeriodKernelTime;
+            public uint PageFaults, TotalProcesses, ActiveProcesses, TerminatedProcesses;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct BASIC_JOB_LIMITS
         {

@@ -229,6 +229,9 @@ namespace PersonalUsageOverlay
             public Preferences Prefs { get { return inner.Prefs; } }
             public string PositionStatus { get { return inner.PositionStatus; } }
             public string ThemeStatus { get { return inner.ThemeStatus; } }
+            public string CodexConnectionStatus { get { return inner.CodexConnectionStatus; } }
+            public string CodexExecutablePath { get { return inner.CodexExecutablePath; } }
+            public string LookupHistoryText { get { return inner.LookupHistoryText; } }
             public VisualTheme Theme { get { return inner.Theme; } }
             public UsagePresentation Presentation { get { return inner.Presentation; } }
             public DateTimeOffset StartedAt { get { return inner.StartedAt; } }

@@ -18,6 +18,7 @@ namespace PersonalUsageOverlay
         private readonly ThemedComboBox positionChoice = new ThemedComboBox(), themeChoice = new ThemedComboBox();
         private readonly ThemedNumericUpDown x = new ThemedNumericUpDown(), y = new ThemedNumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
+        private readonly Label connectionStatus = new Label();
         private readonly ThemedButton problemToggle = new ThemedButton();
         private readonly TextBox problemDetails = new TextBox();
         private readonly ThemedTrackBar transparencyChoice = new ThemedTrackBar();
@@ -41,8 +42,16 @@ namespace PersonalUsageOverlay
             Font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
-            AddLabel(this, "Codex 잔여 한도", 22, 18, 556, 30, 20, true);
-            AddLabel(this, "두 탭에서 설정을 바꾸며 Codex 위 실제 배지를 확인하세요.", 22, 56, 556, 24, 12, false);
+            AddLabel(this, "Codex 잔여 한도", 22, 18, 340, 30, 20, true);
+            AddButton(this, "조회 기록", 374, 17, 96, delegate { ShowLookupHistory(); });
+            AddButton(this, "버전 정보", 482, 17, 96, delegate
+            {
+                ShowDetails("버전 정보", PortableReleaseInfo.VersionText + "\n\n" + PortableReleaseInfo.Changes);
+            });
+            connectionStatus.SetBounds(22, 56, 556, 24);
+            connectionStatus.TextAlign = ContentAlignment.MiddleLeft;
+            connectionStatus.AutoEllipsis = true;
+            AddUi(this, connectionStatus);
             pageHost.SetBounds(20, 130, 560, 428); AddUi(this, pageHost);
             pages = new[] { overlayPage, positionPage };
             string[] pageNames = { "오버레이", "표시 위치 · 테마" };
@@ -220,8 +229,28 @@ namespace PersonalUsageOverlay
         }
         public void UpdateUsage()
         {
+            string status = ConnectionStatusText();
+            if (connectionStatus.Text != status) connectionStatus.Text = status;
             UpdateProblemDetails();
             UpdatePositionStatus();
+        }
+        private string ConnectionStatusText()
+        {
+            string status = app.CodexConnectionStatus;
+            return "Codex CLI · " + (String.IsNullOrWhiteSpace(status) ? "확인 중" : status);
+        }
+        private void ShowLookupHistory()
+        {
+            string path = app.CodexExecutablePath;
+            string history = app.LookupHistoryText;
+            ShowDetails("조회 기록", ConnectionStatusText()
+                + "\n\n현재 조회에 선택된 경로\n" + (String.IsNullOrWhiteSpace(path) ? "확인할 수 없음" : path)
+                + "\n\n이번 실행의 조회 기록 · 최대 30건\n" + (String.IsNullOrWhiteSpace(history) ? "조회 기록이 없습니다." : history));
+        }
+        private void ShowDetails(string title, string text)
+        {
+            using (var details = new OverlayDetailsWindow(title, text, theme, uiScale, Screen.FromControl(this).WorkingArea.Size))
+                details.ShowDialog(this);
         }
         private void UpdateProblemDetails()
         {
@@ -270,7 +299,7 @@ namespace PersonalUsageOverlay
                 var slider = control as ThemedTrackBar; if (slider != null) slider.Theme = theme;
                 if (control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
-            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = theme.Muted;
+            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = connectionStatus.ForeColor = theme.Muted;
             preview.Theme = theme; SetFrameTheme(theme); ApplyCaptionTheme(); Invalidate(true);
         }
         private void DrawChoice(object sender, DrawItemEventArgs e)

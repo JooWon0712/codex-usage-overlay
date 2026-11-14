@@ -39,7 +39,10 @@ namespace PersonalUsageOverlay
         private string anchorStatus = "pending";
         private SettingsWindow settings;
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+        private readonly UsageLookupHistory lookupHistory = new UsageLookupHistory();
         private Process worker;
+        private string workerCodexPath;
+        private bool workerPathRefreshPending, refreshAfterWorkerExit, workerHasReportedState;
         private UsageState state = new UsageState
         {
             status = "loading"
@@ -59,6 +62,30 @@ namespace PersonalUsageOverlay
         private RegisteredWaitHandle openSettingsWait;
         private EventWaitHandle shutdownEvent;
         private RegisteredWaitHandle shutdownWait;
+        public string CodexExecutablePath { get { return workerCodexPath; } }
+        public string LookupHistoryText { get { return lookupHistory.Text; } }
+        public string CodexConnectionStatus
+        {
+            get
+            {
+                if (workerPathRefreshPending)
+                    return "새 경로로 다시 연결 중";
+                if (string.IsNullOrEmpty(workerCodexPath))
+                    return "실행 경로 확인 불가";
+                if (worker == null)
+                    return "경로 선택됨 · 조회 프로세스 연결 끊김";
+                if (!workerHasReportedState || (state.status == "loading" && state.attemptedAt == null))
+                    return "경로 확인 · 조회 대기";
+                if (state.status == "loading")
+                    return "경로 확인 · 조회 중";
+                if (state.reason == "last_update_expired" || state.reason == "account_changed")
+                    return "경로 확인 · 다음 조회 대기";
+                if (state.status == "ok" && state.windows != null && state.windows.Exists(UsageLookupHistory.IsCodexWindow))
+                    return "경로 확인 · 최근 조회 성공";
+                return "경로 선택됨 · 조회 실패";
+            }
+        }
+
         public string PositionStatus
         {
             get
@@ -360,14 +387,22 @@ namespace PersonalUsageOverlay
 
         private void StartWorker()
         {
-            if (quitting)
+            if (quitting || worker != null)
                 return;
             Process p = null;
             bool started = false;
             try
             {
+                // Wait for any children of the previous worker to leave our job.
+                Native.JOB_ACCOUNTING accounting;
+                if (workerJob == IntPtr.Zero || !Native.QueryInformationJobObject(workerJob, 1,
+                    out accounting, (uint)Marshal.SizeOf(typeof(Native.JOB_ACCOUNTING)), IntPtr.Zero)
+                    || accounting.ActiveProcesses != 0)
+                    throw new IOException();
                 RuntimePaths runtime = LoadRuntime();
-                if (runtime == null || string.IsNullOrEmpty(runtime.Node) || string.IsNullOrEmpty(runtime.Codex) || !File.Exists(runtime.Node) || !File.Exists(runtime.Codex))
+                workerCodexPath = runtime.Codex;
+                workerHasReportedState = false;
+                if (!File.Exists(runtime.Node) || !File.Exists(runtime.Codex))
                     throw new IOException();
                 p = new Process();
                 p.StartInfo = new ProcessStartInfo(runtime.Node, Quote(Path.Combine(folder, "worker.mjs")) + " --codex " + Quote(runtime.Codex) + " --parent " + Process.GetCurrentProcess().Id)
@@ -387,7 +422,18 @@ namespace PersonalUsageOverlay
                         return;
                     try
                     {
-                        var incoming = new JavaScriptSerializer().Deserialize<UsageState>(e.Data);
+                        var serializer = new JavaScriptSerializer();
+                        var incoming = serializer.Deserialize<UsageState>(e.Data);
+                        if (incoming != null && incoming.type == "lookup-result")
+                        {
+                            var result = serializer.Deserialize<UsageLookupResult>(e.Data);
+                            PostToUi(delegate
+                            {
+                                if (worker == p)
+                                    lookupHistory.Add(result);
+                            });
+                            return;
+                        }
                         if (incoming == null || incoming.type != "state")
                             return;
                         PostToUi(delegate
@@ -395,6 +441,9 @@ namespace PersonalUsageOverlay
                             if (worker == p)
                             {
                                 state = incoming;
+                                workerHasReportedState = true;
+                                if (active && (incoming.status == "stale" || incoming.status == "unavailable"))
+                                    TryRefreshWorkerPath(false);
                                 UpdatePresentation();
                                 UpdateSettings();
                             }
@@ -414,11 +463,24 @@ namespace PersonalUsageOverlay
                     {
                         if (worker == p)
                         {
+                            bool restart = workerPathRefreshPending && p.ExitCode == 0;
+                            bool refresh = refreshAfterWorkerExit;
                             worker = null;
-                            MarkWorkerFailure("worker_process_exited");
+                            workerHasReportedState = false;
+                            workerPathRefreshPending = false;
+                            refreshAfterWorkerExit = false;
+                            p.Dispose();
+                            if (restart)
+                            {
+                                StartWorker();
+                                if (refresh)
+                                    Send(new { command = "refresh" });
+                                Send(new { command = "active", value = active });
+                            }
+                            else
+                                MarkWorkerFailure("worker_process_exited");
                             UpdatePresentation();
                             UpdateSettings();
-                            p.Dispose();
                         }
                     });
                 };
@@ -484,8 +546,43 @@ namespace PersonalUsageOverlay
         public void ManualRefresh()
         {
             if (worker == null)
+            {
                 StartWorker();
+                Send(new { command = "refresh" });
+                Send(new { command = "active", value = active });
+                return;
+            }
+            if (TryRefreshWorkerPath(true))
+                return;
             Send(new { command = "refresh" });
+        }
+
+        private bool TryRefreshWorkerPath(bool manual)
+        {
+            if (workerPathRefreshPending)
+            {
+                refreshAfterWorkerExit |= manual;
+                return true;
+            }
+            if (File.Exists(workerCodexPath))
+                return false;
+
+            try
+            {
+                string replacement = LoadRuntime().Codex;
+                if (!File.Exists(replacement) || string.Equals(workerCodexPath, replacement, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                worker.StandardInput.WriteLine("{\"command\":\"quit\"}");
+                worker.StandardInput.Flush();
+                workerPathRefreshPending = true;
+                refreshAfterWorkerExit = manual;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public void Quit()
