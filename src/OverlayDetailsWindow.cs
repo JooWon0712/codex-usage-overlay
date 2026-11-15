@@ -72,10 +72,16 @@ namespace PersonalUsageOverlay
             int height = Math.Min((int)Math.Round(400 * scale), workArea.Height - CaptionHeight - margin * 2);
             SetContentSize(width, height);
 
-            Font previous = contentFont;
-            contentFont = new Font("Segoe UI", 13 * scale, FontStyle.Regular, GraphicsUnit.Pixel);
-            details.Font = closeButton.Font = contentFont;
-            if (previous != null) previous.Dispose();
+            // WinForms keeps the currently assigned Font when the new value is equal.
+            // Reuse it at the same DPI so controls never paint with a disposed font.
+            float fontSize = 13 * scale;
+            if (contentFont == null || contentFont.Size != fontSize)
+            {
+                Font previous = contentFont;
+                contentFont = new Font("Segoe UI", fontSize, FontStyle.Regular, GraphicsUnit.Pixel);
+                details.Font = closeButton.Font = contentFont;
+                if (previous != null) previous.Dispose();
+            }
             closeButton.ScaleFactor = scale;
             details.SetBounds(margin, margin, width - margin * 2, height - buttonHeight - margin * 3);
             closeButton.SetBounds(width - buttonWidth - margin, height - buttonHeight - margin,

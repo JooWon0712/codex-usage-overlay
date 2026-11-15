@@ -21,6 +21,9 @@ namespace PersonalUsageOverlay
                 checks["themed_paint_controls_preserve_owned_paint_and_buffer_styles"] = PaintStyles(button) && PaintStyles(choice);
             }
             foreach (VisualTheme theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+            {
+                checks["details_dialog_keeps_text_and_close_button_fonts_across_layouts_" + (theme.IsDark ? "dark" : "light")] =
+                    DetailsDialogRepaints(theme);
                 foreach (float scale in new[] { 1f, 1.5f, 2f })
                 {
                     string name = "themed_paint_" + (theme.IsDark ? "dark_" : "light_") + (int)(scale * 100) + "_";
@@ -45,6 +48,35 @@ namespace PersonalUsageOverlay
                     checks[name + "unparented_controls_use_theme_background"] = UnparentedBackground(theme, scale);
                     checks[name + "preview_uses_declared_example_canvas_in_actual_corner_pixels"] = PreviewCanvas(theme, scale);
                 }
+            }
+        }
+
+        private static bool DetailsDialogRepaints(VisualTheme theme)
+        {
+            try
+            {
+                Size workArea = new Size(1920, 1080);
+                using (var dialog = new OverlayDetailsWindow("버전 정보", PortableReleaseInfo.VersionText, theme, 1f, workArea))
+                {
+                    var layout = typeof(OverlayDetailsWindow).GetMethod("LayoutDetails", BindingFlags.Instance | BindingFlags.NonPublic);
+                    var button = (ThemedButton)dialog.CancelButton;
+                    var details = (TextBox)button.Parent.Controls[0];
+                    foreach (float scale in new[] { 1f, 1.5f, 1.5f, 2f, 1f })
+                    {
+                        layout.Invoke(dialog, new object[] { scale, workArea });
+                        using (Bitmap bitmap = PaintOnly(button, scale, null, Point.Empty))
+                            if (!CornersEqual(bitmap, theme.Background) || details.Font.GetHeight() <= 0f)
+                                return false;
+                    }
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                if (!(exception.GetBaseException() is ArgumentException))
+                    throw;
+                return false;
+            }
         }
 
         private static bool PreviewCanvas(VisualTheme theme, float scale)

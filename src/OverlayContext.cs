@@ -613,7 +613,7 @@ namespace PersonalUsageOverlay
             {
                 Prefs.SidebarX = left;
                 Prefs.SidebarBottomGap = vertical;
-                Prefs.SidebarY = vertical + 46;
+                Prefs.SidebarY = vertical + Preferences.LegacySidebarBadgeHeight;
             }
 
             ApplyPreferences();

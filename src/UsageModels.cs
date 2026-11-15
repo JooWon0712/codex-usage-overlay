@@ -8,12 +8,18 @@ namespace PersonalUsageOverlay
         internal const string BelowTitle = "title-below";
         internal const int TitleLeadingInset = 30;
         internal const int DefaultTitleOffsetX = 0, DefaultTitleGap = 6;
+        internal const int DefaultSidebarBottomGap = 16, LegacySidebarBadgeHeight = 46;
         public string Position = BelowTitle;
-        public int SidebarX = 64, SidebarY = 82;
+        public int SidebarX = 64, SidebarY = DefaultSidebarBottomGap + LegacySidebarBadgeHeight;
         public int TitleOffsetX = DefaultTitleOffsetX, TitleGap = DefaultTitleGap;
         public string ThemeMode = "codex";
         public BadgeLayoutSettings BadgeLayout = new BadgeLayoutSettings();
         public int? SidebarBottomGap;
+
+        internal int EffectiveSidebarBottomGap
+        {
+            get { return (int)Math.Max(0L, Math.Min(3000L, SidebarBottomGap ?? ((long)SidebarY - LegacySidebarBadgeHeight))); }
+        }
 
         internal void NormalizePosition()
         {
@@ -23,10 +29,7 @@ namespace PersonalUsageOverlay
             TitleGap = Math.Max(0, Math.Min(3000, TitleGap));
             if (ThemeMode != "light" && ThemeMode != "dark" && ThemeMode != "system")
                 ThemeMode = "codex";
-            if (!SidebarBottomGap.HasValue)
-                SidebarBottomGap = (int)Math.Max(0L, Math.Min(3000L, (long)SidebarY - 46));
-            else
-                SidebarBottomGap = Math.Max(0, Math.Min(3000, SidebarBottomGap.Value));
+            SidebarBottomGap = EffectiveSidebarBottomGap;
             if (BadgeLayout == null) BadgeLayout = new BadgeLayoutSettings();
             BadgeLayout.Normalize();
         }
@@ -36,8 +39,8 @@ namespace PersonalUsageOverlay
             if (Position == "sidebar")
             {
                 SidebarX = 64;
-                SidebarY = 82;
-                SidebarBottomGap = 36;
+                SidebarY = DefaultSidebarBottomGap + LegacySidebarBadgeHeight;
+                SidebarBottomGap = DefaultSidebarBottomGap;
             }
             else
             {

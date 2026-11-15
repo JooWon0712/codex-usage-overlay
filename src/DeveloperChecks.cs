@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Windows.Automation;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
@@ -15,6 +16,7 @@ namespace PersonalUsageOverlay
         {
             var checks = new Dictionary<string, bool>();
             CheckTitleLayout(checks);
+            CheckTitleElements(checks);
             TitleAnchorTrackerChecks.Run(checks);
             CheckPreferences(checks);
             RuntimeResolverChecks.Run(checks);
@@ -116,6 +118,11 @@ namespace PersonalUsageOverlay
             sidebar.NormalizePosition();
             checks["legacy_sidebar_selection_and_offsets_preserved"] = sidebar.Position == "sidebar" && sidebar.SidebarX == 112 && sidebar.SidebarY == 98;
             checks["legacy_sidebar_gets_new_below_title_defaults"] = sidebar.TitleOffsetX == 0 && sidebar.TitleGap == 6;
+            var savedSidebar = json.Deserialize<Preferences>("{\"Position\":\"sidebar\",\"SidebarBottomGap\":36,\"SidebarY\":82}");
+            savedSidebar.NormalizePosition();
+            checks["saved_sidebar_bottom_gap_is_preserved"] = savedSidebar.EffectiveSidebarBottomGap == 36;
+            savedSidebar.ResetCurrentPosition();
+            checks["sidebar_reset_applies_smaller_default_gap"] = savedSidebar.EffectiveSidebarBottomGap == 16 && savedSidebar.SidebarY == 62;
             var oldBelow = json.Deserialize<Preferences>("{\"Position\":\"title-below\",\"TitleBelowX\":48,\"TitleBelowY\":56}");
             oldBelow.NormalizePosition();
             checks["old_client_offsets_are_not_title_offsets"] = oldBelow.Position == Preferences.BelowTitle && oldBelow.TitleOffsetX == 0 && oldBelow.TitleGap == 6;
@@ -142,15 +149,29 @@ namespace PersonalUsageOverlay
             var preferences = new Preferences();
             checks["below_title_is_default"] = preferences.Position == Preferences.BelowTitle;
             var sidebar = new Preferences { Position = "sidebar" };
+            checks["sidebar_new_default_uses_smaller_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,902,320,82);
+            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,853,480,123);
+            sidebar.SidebarY = 82;
             checks["sidebar_preserves_legacy_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,882,320,82);
-            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,823,480,123);
             checks["tiny_sidebar_hides_full_badge_instead_of_clipping"] = OverlayLayout.CalculateBounds(new Rectangle(0,0,100,30),1,sidebar).IsEmpty;
             var client = new Rectangle(59,104,2944,1877);
             var anchor = new TitleAnchorObservation { Status="ok",TitleBounds=new Rectangle(585,195,199,28),HeaderBounds=new Rectangle(507,170,2491,78) };
             checks["unavailable_title_never_falls_back_over_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences).IsEmpty;
             checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(540,257,480,123);
             checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(555,254,320,82);
-            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(525,260,640,164);
+            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(531,260,640,164);
+            var menuAnchor = new TitleAnchorObservation { Status="ok", HeaderBounds=new Rectangle(49,8,900,79),
+                TitleBounds=new Rectangle(113,40,185,22), TitleMenuBounds=new Rectangle(70,20,265,54) };
+            var menuClient = new Rectangle(0,0,1000,700);
+            checks["title_menu_badge_lines_up_with_folder_in_reported_layout"] = OverlayLayout.CalculateBounds(menuClient,1.5f,preferences,menuAnchor).Left == 83;
+            menuAnchor.TitleBounds = menuAnchor.TitleMenuBounds;
+            checks["title_menu_bounds_work_without_separate_text_element"] = OverlayLayout.CalculateBounds(menuClient,1.5f,preferences,menuAnchor).Left == 83;
+            preferences.TitleOffsetX = 4;
+            checks["title_menu_folder_alignment_accepts_saved_horizontal_adjustment"] = OverlayLayout.CalculateBounds(menuClient,1.5f,preferences,menuAnchor).Left == 89;
+            preferences.TitleOffsetX = 0;
+            menuAnchor.TitleBounds = new Rectangle(113,40,185,22);
+            menuAnchor.TitleMenuBounds = new Rectangle(70,20,42,54);
+            checks["unrelated_title_menu_bounds_fall_back_to_title_text"] = OverlayLayout.CalculateBounds(menuClient,1.5f,preferences,menuAnchor).Left == 68;
             checks["title_leading_inset_preserves_zero_stored_offset_without_migration"] = preferences.TitleOffsetX == 0
                 && preferences.TitleGap == 6 && Preferences.DefaultTitleOffsetX == 0;
             preferences.TitleOffsetX=12; preferences.TitleGap=10;
@@ -160,11 +181,13 @@ namespace PersonalUsageOverlay
                 && OverlayLayout.CalculateBounds(client,1.25f,preferences,anchor).Left == 563;
             preferences.ResetCurrentPosition();
             anchor.TitleBounds=new Rectangle(517,195,40,28);
-            checks["default_title_leading_inset_stops_at_content_header"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 507;
+            checks["title_badge_keeps_clear_of_content_edge_at_all_scales"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor).Left == 519
+                && OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 525
+                && OverlayLayout.CalculateBounds(client,2,preferences,anchor).Left == 531;
             anchor.TitleBounds=new Rectangle(2900,195,80,28);
             checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2518,257,480,123);
             anchor.TitleBounds=new Rectangle(585,195,199,28); preferences.TitleOffsetX=-4000;
-            checks["negative_offset_cannot_enter_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 507;
+            checks["negative_offset_cannot_remove_content_edge_gutter"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 525;
             preferences.ResetCurrentPosition();
             anchor.HeaderBounds=new Rectangle(107,170,2891,78); anchor.TitleBounds=new Rectangle(185,195,199,28);
             checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(140,257,480,123);
@@ -172,13 +195,15 @@ namespace PersonalUsageOverlay
             checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2079,-47,480,123);
             anchor.HeaderBounds=new Rectangle(507,170,70,78); anchor.TitleBounds=new Rectangle(517,195,40,28);
             checks["insufficient_content_width_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
+            anchor.HeaderBounds = new Rectangle(507,170,480,78);
+            checks["badge_hides_when_header_lacks_room_for_full_width_and_gutter"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.HeaderBounds=new Rectangle(507,170,2491,78); anchor.TitleBounds=new Rectangle(585,195,199,28);
             checks["insufficient_space_below_header_hides_badge"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,150),1.5f,preferences,anchor).IsEmpty;
             checks["partial_height_does_not_cut_reset_or_countdown"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,250),1.5f,preferences,anchor).IsEmpty;
             var large = new Preferences { BadgeLayout = new BadgeLayoutSettings { Width=600,Height=300 } };
             checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(540,257,480,123);
             checks["extreme_unnormalized_title_offsets_clamp_without_integer_wraparound"] = OverlayLayout.CalculateBounds(client,1.5f,
-                new Preferences { TitleOffsetX=int.MinValue },anchor).Left == 507
+                new Preferences { TitleOffsetX=int.MinValue },anchor).Left == 525
                 && OverlayLayout.CalculateBounds(client,1.5f,new Preferences { TitleOffsetX=int.MaxValue },anchor).Left == 2518;
             anchor.Status="ambiguous";
             checks["ambiguous_title_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
@@ -189,6 +214,42 @@ namespace PersonalUsageOverlay
             checks["anchor_expires_at_two_seconds"] = !TitleAnchorTracker.IsFresh(now.AddSeconds(-2),now);
             checks["future_anchor_rejected"] = !TitleAnchorTracker.IsFresh(now.AddSeconds(1),now);
             checks["old_anchor_rejected"] = !TitleAnchorTracker.IsFresh(now.AddMinutes(-1),now);
+        }
+
+        private static void CheckTitleElements(Dictionary<string, bool> checks)
+        {
+            var client = new Rectangle(0, 0, 1200, 800);
+            var document = new TitleAnchorReader.Snapshot { Type = ControlType.Document, Id = "RootWebArea", Name = "Session" };
+            var header = new TitleAnchorReader.Snapshot { ClassName = "MainTitlebar-example", HasBounds = true,
+                Bounds = new Rectangle(250, 50, 950, 52) };
+            var toolbar = new TitleAnchorReader.Snapshot { Type = ControlType.ToolBar, HasBounds = true,
+                Bounds = new Rectangle(260, 50, 880, 52) };
+            var title = new TitleAnchorReader.Snapshot { Type = ControlType.Text, Name = "Session", HasBounds = true,
+                Bounds = new Rectangle(303, 61, 100, 26) };
+            Func<bool> matches = () => TitleAnchorReader.Valid(title, document, header, toolbar, client, 1f);
+            checks["title_text_in_legacy_header_matches"] = matches();
+
+            title.Type = ControlType.Button;
+            title.ClassName = "min-w-0 text-conversation-title select-none";
+            checks["title_menu_in_legacy_header_matches"] = matches();
+            header.ClassName = "group/titlebar top-[var(--app-shell-page-header-offset,0px)] relative";
+            toolbar.Type = ControlType.Group;
+            toolbar.ClassName = "w-full @container/app-shell-header-toolbar";
+            checks["title_menu_in_current_header_matches"] = matches();
+            title.Name = "Other session";
+            checks["title_menu_for_other_session_rejected"] = !matches();
+            title.Name = document.Name;
+            title.Offscreen = true;
+            checks["hidden_title_menu_rejected"] = !matches();
+            title.Offscreen = false;
+            title.ClassName = "text-conversation-title-secondary";
+            checks["unrelated_header_button_rejected"] = !matches();
+            title.ClassName = "text-conversation-title";
+            header.ClassName = "group/titlebar top-0";
+            checks["companion_panel_titlebar_rejected"] = !matches();
+            header.ClassName = "group/titlebar top-[var(--app-shell-page-header-offset,0px)]";
+            toolbar.Bounds = new Rectangle(450, 50, 690, 52);
+            checks["title_menu_outside_toolbar_rejected"] = !matches();
         }
 
         public static void RenderSamples(string directory)

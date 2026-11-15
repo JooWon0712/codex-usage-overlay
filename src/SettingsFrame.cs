@@ -85,7 +85,25 @@ namespace PersonalUsageOverlay
         protected void SetFrameTheme(VisualTheme value)
         {
             frameTheme = value; ContentHost.BackColor = value.Background;
+            ApplyCaptionTheme();
             RefreshFrame(); Invalidate();
+        }
+
+        private void ApplyCaptionTheme()
+        {
+            if (!IsHandleCreated) return;
+            try
+            {
+                bool highContrast = SystemInformation.HighContrast;
+                int dark = frameTheme.IsDark && !highContrast ? 1 : 0;
+                int caption = highContrast ? -1 : ColorTranslator.ToWin32(frameTheme.Background);
+                int text = highContrast ? -1 : ColorTranslator.ToWin32(frameTheme.Text);
+                Native.DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int));
+                Native.DwmSetWindowAttribute(Handle, 35, ref caption, sizeof(int));
+                Native.DwmSetWindowAttribute(Handle, 36, ref text, sizeof(int));
+            }
+            catch (DllNotFoundException) { }
+            catch (EntryPointNotFoundException) { }
         }
 
         private static bool CanUseCustomFrame()
@@ -128,6 +146,7 @@ namespace PersonalUsageOverlay
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            ApplyCaptionTheme();
             RefreshFrame();
             if (customFrame && !requestedClientSize.IsEmpty)
                 Native.SetWindowPos(Handle, IntPtr.Zero, 0, 0, requestedClientSize.Width, requestedClientSize.Height, 0x36);

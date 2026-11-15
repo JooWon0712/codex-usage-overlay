@@ -195,7 +195,7 @@ namespace PersonalUsageOverlay
                 positionChoice.SelectedIndex = side ? 0 : 1;
                 x.Minimum = side ? 0 : -4000;
                 x.Value = Math.Max(x.Minimum, Math.Min(x.Maximum, side ? app.Prefs.SidebarX : app.Prefs.TitleOffsetX));
-                y.Value = Math.Max(0, Math.Min(3000, side ? (app.Prefs.SidebarBottomGap ?? (int)Math.Max(0L, Math.Min(3000L, (long)app.Prefs.SidebarY - 46))) : app.Prefs.TitleGap));
+                y.Value = Math.Max(0, Math.Min(3000, side ? app.Prefs.EffectiveSidebarBottomGap : app.Prefs.TitleGap));
                 horizontal.Text = side ? "가로: 창 왼쪽에서" : "가로: 기본 위치 보정";
                 vertical.Text = side ? "세로: 창 아래 여백" : "세로: 제목 영역 아래 간격";
                 themeChoice.SelectedIndex = app.Prefs.ThemeMode == "system" ? 1 : app.Prefs.ThemeMode == "light" ? 2 : app.Prefs.ThemeMode == "dark" ? 3 : 0;
@@ -300,7 +300,7 @@ namespace PersonalUsageOverlay
                 if (control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
             previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = connectionStatus.ForeColor = theme.Muted;
-            preview.Theme = theme; SetFrameTheme(theme); ApplyCaptionTheme(); Invalidate(true);
+            preview.Theme = theme; SetFrameTheme(theme); Invalidate(true);
         }
         private void DrawChoice(object sender, DrawItemEventArgs e)
         {
@@ -313,17 +313,5 @@ namespace PersonalUsageOverlay
             TextRenderer.DrawText(e.Graphics, choice.Items[e.Index].ToString(), choice.Font, bounds, text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform); e.DrawFocusRectangle();
         }
         protected override bool ShowWithoutActivation { get { return previewMode || base.ShowWithoutActivation; } }
-        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); ApplyCaptionTheme(); }
-        private void ApplyCaptionTheme()
-        {
-            if (!IsHandleCreated) return;
-            try
-            {
-                int dark = theme.IsDark && !SystemInformation.HighContrast ? 1 : 0, caption = SystemInformation.HighContrast ? -1 : ColorTranslator.ToWin32(theme.Background), text = SystemInformation.HighContrast ? -1 : ColorTranslator.ToWin32(theme.Text);
-                Native.DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)); Native.DwmSetWindowAttribute(Handle, 35, ref caption, sizeof(int)); Native.DwmSetWindowAttribute(Handle, 36, ref text, sizeof(int));
-            }
-            catch (DllNotFoundException) { }
-            catch (EntryPointNotFoundException) { }
-        }
     }
 }
