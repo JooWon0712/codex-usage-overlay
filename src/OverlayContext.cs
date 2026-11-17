@@ -40,6 +40,7 @@ namespace PersonalUsageOverlay
         private SettingsWindow settings;
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private readonly UsageLookupHistory lookupHistory = new UsageLookupHistory();
+        private readonly ClaudeUsageReader claudeUsage = new ClaudeUsageReader(AppIdentity.ClaudeUsageFile);
         private Process worker;
         private string workerCodexPath;
         private bool workerPathRefreshPending, refreshAfterWorkerExit, workerHasReportedState;
@@ -370,7 +371,9 @@ namespace PersonalUsageOverlay
 
         private void UpdatePresentation()
         {
-            var presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
+            var now = DateTimeOffset.UtcNow;
+            var claude = Prefs.BadgeLayout.ShowClaude ? claudeUsage.Read(now) : null;
+            var presentation = UsagePresentation.Create(state, now, TimeZoneInfo.Local, claude);
             var prior = Presentation;
             if (!presentation.HasSameDisplayAs(prior))
             {

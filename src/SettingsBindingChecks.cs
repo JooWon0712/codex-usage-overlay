@@ -110,6 +110,18 @@ namespace PersonalUsageOverlay
                     && json.Serialize(host.Prefs.BadgeLayout) == priorLayout;
                 checks["settings_binding_options_position_theme_and_reload_preserve_cached_example"] = PreviewUnchanged(preview,
                     cachedPreview, cachedText, previewLabel, cachedLabel);
+                var claude = Field<CheckBox>(window, "claudeChoice");
+                bool defaultOff = !claude.Checked && !preview.LayoutSettings.ShowClaude;
+                claude.Checked = true;
+                window.LoadPreferences();
+                checks["settings_binding_claude_toggle_updates_saved_choice_and_example"] = defaultOff && claude.Checked
+                    && host.Prefs.BadgeLayout.ShowClaude && preview.LayoutSettings.ShowClaude && preview.LayoutSettings.Height == 122
+                    && preview.Presentation.Claude.Status.StartsWith("예시", StringComparison.Ordinal)
+                    && Field<Label>(window, "claudeStatus").Text == "실제 Claude Code · 한도 수신 대기";
+                claude.Checked = false;
+                checks["settings_binding_claude_toggle_off_restores_compact_example"] = !host.Prefs.BadgeLayout.ShowClaude
+                    && !preview.LayoutSettings.ShowClaude && preview.LayoutSettings.Height == 58
+                    && Field<Label>(window, "claudeStatus").Text.Length == 0;
             }
         }
 

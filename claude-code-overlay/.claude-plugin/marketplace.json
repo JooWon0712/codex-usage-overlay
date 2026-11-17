@@ -1,0 +1,8 @@
+{
+  "name": "codex-usage-overlay",
+  "description": "Optional Claude Code usage bridge for the Windows portable overlay.",
+  "owner": { "name": "Codex Usage Overlay" },
+  "plugins": [
+    { "name": "usage-overlay-bridge", "source": "./" }
+  ]
+}

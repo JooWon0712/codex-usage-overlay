@@ -70,7 +70,7 @@ namespace PersonalUsageOverlay
                     checks["settings_dpi_viewport_and_caption_match_message_scale" + suffix] = viewport;
                     checks["settings_dpi_main_content_and_preview_coordinates_are_scaled_once" + suffix] =
                         page.Bounds == Scaled(20, 130, 560, 428, scale)
-                        && preview.Bounds == Scaled(16, 42, 520, 116, scale)
+                        && preview.Bounds == Scaled(16, 32, 520, 178, scale)
                         && Near(Field<float>(window, "uiScale"), scale)
                         && Near(Field<float>(window, "layoutScale"), scale) && Near(preview.UiScale, scale);
                     checks["settings_dpi_native_choices_keep_selection_font_item_height_and_scale" + suffix] =
@@ -184,7 +184,7 @@ namespace PersonalUsageOverlay
             for (int index = 0; index < buttons.Length; index++)
                 result &= buttons[index].Bounds == Scaled(20 + index * 284, 96, 276, 30, scale)
                     && Near(buttons[index].ScaleFactor, scale) && Near(buttons[index].Font.Size, 12 * scale);
-            foreach (var key in new[] { "resetChoice", "countdownChoice", "planChoice" })
+            foreach (var key in new[] { "resetChoice", "countdownChoice", "planChoice", "claudeChoice" })
             {
                 var choice = Field<ThemedCheckBox>(window, key);
                 result &= Near(choice.ScaleFactor, scale) && Near(choice.Font.Size, 14 * scale);

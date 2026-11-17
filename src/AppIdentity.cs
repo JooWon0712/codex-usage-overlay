@@ -27,6 +27,11 @@ namespace PersonalUsageOverlay
             }
         }
 
+        public static string ClaudeUsageFile
+        {
+            get { return Path.Combine(DataDirectory, "claude-usage.json"); }
+        }
+
         public static bool Acquire(Mutex mutex, int timeout)
         {
             try

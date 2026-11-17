@@ -227,6 +227,12 @@ namespace PersonalUsageOverlay
                 {
                     g.FillPath(fill, path);
                     g.DrawPath(border, path);
+                    if (normalized.ShowClaude)
+                    {
+                        int separator = normalized.Elements.Find(item => item.Key == "claude-heading").Y - 4;
+                        float y = canvas.Top + separator * scale;
+                        g.DrawLine(border, canvas.Left + 10 * scale, y, canvas.Right - 10 * scale, y);
+                    }
                 }
 
                 using(var text=CreateTextBitmap(new Size((int)Math.Round(physicalWidth),(int)Math.Round(physicalHeight)),scale,theme,presentation,normalized))
@@ -242,6 +248,7 @@ namespace PersonalUsageOverlay
         {
             UsageTone tone=presentation==null?UsageTone.Attention:presentation.Tone;
             Color stateColor=tone==UsageTone.Low?theme.Danger:tone==UsageTone.Normal?theme.Success:theme.Attention;
+            var claude = (presentation == null ? null : presentation.Claude) ?? ClaudeUsageDisplay.Awaiting;
             double? lowWeekly=presentation==null?null:presentation.LowWeeklyRemaining;
             if(lowWeekly.HasValue && (Double.IsNaN(lowWeekly.Value)||Double.IsInfinity(lowWeekly.Value)||lowWeekly.Value<0||lowWeekly.Value>100)) lowWeekly=null;
             HeadlinePlacement headline=CalculateHeadline(g,bounds,scale,presentation,normalized);
@@ -275,6 +282,16 @@ namespace PersonalUsageOverlay
                     {
                         text = TextOr(presentation == null ? null : presentation.CountdownText, "확인 불가");
                         color = lowWeekly.HasValue ? theme.DangerText : theme.Accent;
+                    }
+                    else if (element.Key == "claude-heading")
+                    {
+                        text = "Claude Code · " + claude.Status;
+                        color = theme.Text;
+                    }
+                    else if (element.Key == "claude-five-hour" || element.Key == "claude-weekly")
+                    {
+                        text = element.Key == "claude-five-hour" ? claude.FiveHour : claude.Weekly;
+                        color = theme.Muted;
                     }
                     else
                         continue;

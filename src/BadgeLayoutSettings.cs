@@ -16,6 +16,7 @@ namespace PersonalUsageOverlay
         public int Width = 320, Height = 82;
         public int BackgroundTransparency = 0;
         public bool ShowPlan = true;
+        public bool ShowClaude;
         public List<BadgeElement> Elements;
 
         public BadgeLayoutSettings()
@@ -30,15 +31,22 @@ namespace PersonalUsageOverlay
             bool date = OptionalVisible("weekly-reset");
             bool countdown = OptionalVisible("countdown");
             Width = 320;
-            Height = date ? 82 : 58;
+            int codexHeight = date ? 82 : 58;
+            Height = codexHeight + (ShowClaude ? 64 : 0);
             int transparency = Math.Max(0, Math.Min(100, BackgroundTransparency));
             BackgroundTransparency = ((transparency + 5) / 10) * 10;
             Elements = FixedElements(date, countdown);
+            if (ShowClaude)
+            {
+                Elements.Add(new BadgeElement { Key = "claude-heading", X = 10, Y = codexHeight + 1, Width = 300, FontSize = 12, Bold = true, Visible = true });
+                Elements.Add(new BadgeElement { Key = "claude-five-hour", X = 10, Y = codexHeight + 22, Width = 300, FontSize = 11, Visible = true });
+                Elements.Add(new BadgeElement { Key = "claude-weekly", X = 10, Y = codexHeight + 42, Width = 300, FontSize = 11, Visible = true });
+            }
         }
 
         public BadgeLayoutSettings Copy()
         {
-            var copy = new BadgeLayoutSettings { Width = Width, Height = Height, BackgroundTransparency = BackgroundTransparency, ShowPlan = ShowPlan };
+            var copy = new BadgeLayoutSettings { Width = Width, Height = Height, BackgroundTransparency = BackgroundTransparency, ShowPlan = ShowPlan, ShowClaude = ShowClaude };
             if (Elements == null)
             {
                 copy.Elements = null;

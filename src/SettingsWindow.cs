@@ -14,11 +14,12 @@ namespace PersonalUsageOverlay
         private readonly ThemedButton[] pageButtons = new ThemedButton[2];
         private Panel[] pages;
         private readonly BadgePreview preview = new BadgePreview();
-        private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox(), planChoice = new ThemedCheckBox();
+        private readonly ThemedCheckBox resetChoice = new ThemedCheckBox(), countdownChoice = new ThemedCheckBox(), planChoice = new ThemedCheckBox(), claudeChoice = new ThemedCheckBox();
         private readonly ThemedComboBox positionChoice = new ThemedComboBox(), themeChoice = new ThemedComboBox();
         private readonly ThemedNumericUpDown x = new ThemedNumericUpDown(), y = new ThemedNumericUpDown();
         private readonly Label previewStatus = new Label(), positionStatus = new Label(), themeStatus = new Label(), horizontal = new Label(), vertical = new Label(), footer = new Label();
         private readonly Label connectionStatus = new Label();
+        private readonly Label claudeStatus = new Label();
         private readonly ThemedButton problemToggle = new ThemedButton();
         private readonly TextBox problemDetails = new TextBox();
         private readonly ThemedTrackBar transparencyChoice = new ThemedTrackBar();
@@ -65,25 +66,30 @@ namespace PersonalUsageOverlay
                 pageButtons[index] = button; AddUi(this, button);
             }
 
-            AddLabel(overlayPage, "오버레이 미리보기", 16, 12, 520, 22, 12, true);
+            AddLabel(overlayPage, "오버레이 미리보기", 16, 8, 520, 20, 12, true);
             preview.Presentation = UsagePresentation.CreatePreview(app.StartedAt);
             preview.AccessibleDescription = "프로그램 시작 시각으로 만든 예시 데이터입니다.";
-            preview.SetBounds(16, 42, 520, 116); AddUi(overlayPage, preview);
-            previewStatus.SetBounds(16, 162, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
-            transparencyStatus.SetBounds(16,194,520,24); AddUi(overlayPage,transparencyStatus);
+            preview.SetBounds(16, 32, 520, 178); AddUi(overlayPage, preview);
+            previewStatus.SetBounds(16, 214, 520, 20); previewStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); AddUi(overlayPage, previewStatus);
+            transparencyStatus.SetBounds(16, 237, 520, 22); AddUi(overlayPage, transparencyStatus);
             // The native control has eleven positions, so every mouse/keyboard
             // value maps to a supported ten-percent step without event re-entry.
             transparencyChoice.Minimum=0; transparencyChoice.Maximum=10; transparencyChoice.SmallChange=1; transparencyChoice.LargeChange=1;
             transparencyChoice.TickStyle=TickStyle.None; transparencyChoice.AutoSize=false; transparencyChoice.AccessibleName="배경 투명도";
-            transparencyChoice.SetBounds(16,220,520,30); AddUi(overlayPage,transparencyChoice);
-            AddLabel(overlayPage, "추가 항목 표시", 16, 262, 520, 24, 14, true);
-            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 294);
+            transparencyChoice.SetBounds(16, 258, 520, 24); AddUi(overlayPage, transparencyChoice);
+            AddLabel(overlayPage, "추가 항목 표시", 16, 282, 520, 22, 14, true);
+            AddOption(resetChoice, "주간 초기화 날짜 · 시각", 306);
             resetChoice.Width = 268;
-            AddOption(planChoice, "구독 요금제", 294);
-            planChoice.SetBounds(296, 294, 240, 30);
+            AddOption(planChoice, "구독 요금제", 306);
+            planChoice.SetBounds(296, 306, 240, 30);
             planChoice.AccessibleDescription = "연결된 Codex 계정에서 확인한 요금제 종류를 갱신 시각 옆에 표시합니다.";
-            AddOption(countdownChoice, "초기화 디데이", 330);
-            AddLabel(overlayPage, "남은 한도와 갱신 시각 · 조회 상태는 항상 표시됩니다.", 16, 366, 520, 22, 11, false);
+            AddOption(countdownChoice, "초기화 디데이", 340);
+            countdownChoice.Width = 268;
+            AddOption(claudeChoice, "Claude Code 한도 표시", 340);
+            claudeChoice.SetBounds(296, 340, 240, 30);
+            claudeChoice.AccessibleDescription = "배지에 Claude Code의 5시간 및 주간 한도를 추가합니다. 실제 값은 한도 전달 플러그인이나 상태줄을 연결하면 표시됩니다.";
+            claudeStatus.SetBounds(16, 372, 520, 22); claudeStatus.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel);
+            claudeStatus.AutoEllipsis = true; AddUi(overlayPage, claudeStatus);
             overlayPage.AutoScroll = true;
             problemToggle.Text = "문제 확인 ▸"; problemToggle.AccessibleName = "조회 실패 원인 펼치기";
             problemToggle.SetBounds(16, 398, 132, 28); problemToggle.Visible = false;
@@ -113,6 +119,7 @@ namespace PersonalUsageOverlay
             resetChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             countdownChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             planChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
+            claudeChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             transparencyChoice.ValueChanged += delegate { SaveDisplayOptions(); };
             positionChoice.SelectedIndexChanged += delegate { if (!updating && positionChoice.SelectedIndex >= 0) { app.SetPosition(positionChoice.SelectedIndex == 0 ? "sidebar" : Preferences.BelowTitle); LoadPreferences(); } };
             themeChoice.SelectedIndexChanged += delegate { if (!updating && themeChoice.SelectedIndex >= 0) { app.SetTheme(new[] { "codex", "system", "light", "dark" }[themeChoice.SelectedIndex]); UpdateTheme(); } };
@@ -147,7 +154,7 @@ namespace PersonalUsageOverlay
         private void ScaleInputs()
         {
             preview.UiScale = uiScale; transparencyChoice.ScaleFactor = uiScale;
-            foreach (var check in new[] { resetChoice, countdownChoice, planChoice }) check.ScaleFactor = uiScale;
+            foreach (var check in new[] { resetChoice, countdownChoice, planChoice, claudeChoice }) check.ScaleFactor = uiScale;
             foreach (var choice in new[] { positionChoice, themeChoice }) { choice.ScaleFactor = uiScale; choice.ItemHeight = (int)Math.Round(26 * uiScale); }
             foreach (var number in new[] { x, y }) number.ScaleFactor = uiScale;
         }
@@ -206,6 +213,7 @@ namespace PersonalUsageOverlay
                 transparencyChoice.Value=preview.LayoutSettings.BackgroundTransparency / 10;
                 resetChoice.Checked = IsVisible("weekly-reset"); countdownChoice.Checked = IsVisible("countdown");
                 planChoice.Checked = preview.LayoutSettings.ShowPlan;
+                claudeChoice.Checked = preview.LayoutSettings.ShowClaude;
             }
             finally { updating = false; }
             UpdatePreviewStatus();
@@ -217,6 +225,7 @@ namespace PersonalUsageOverlay
             var layout = preview.LayoutSettings.Copy();
             layout.BackgroundTransparency=transparencyChoice.Value * 10;
             layout.ShowPlan = planChoice.Checked;
+            layout.ShowClaude = claudeChoice.Checked;
             layout.Elements.Find(element => element.Key == "weekly-reset").Visible = resetChoice.Checked;
             layout.Elements.Find(element => element.Key == "countdown").Visible = countdownChoice.Checked;
             layout.Normalize(); preview.LayoutSettings = layout; app.SetBadgeLayout(layout); UpdatePreviewStatus();
@@ -226,6 +235,9 @@ namespace PersonalUsageOverlay
             previewStatus.Text = "예시 데이터 · " + (SystemInformation.HighContrast ? "고대비 배경" : "다크 배경") + " · 프로그램 시작 시각 기준";
             transparencyStatus.Text="배경 투명도 · "+(transparencyChoice.Value * 10)+"%"+(SystemInformation.HighContrast?" · 고대비에서는 불투명"
                 : BadgeTextColors.Resolve(app.Theme,transparencyChoice.Value*10,false).Bright?" · 밝은 글자":" · 진한 글자");
+            var claude = (app.Presentation == null ? null : app.Presentation.Claude) ?? ClaudeUsageDisplay.Awaiting;
+            string status = claudeChoice.Checked ? "실제 Claude Code · " + claude.Status : String.Empty;
+            if (claudeStatus.Text != status) claudeStatus.Text = status;
         }
         public void UpdateUsage()
         {
@@ -299,7 +311,7 @@ namespace PersonalUsageOverlay
                 var slider = control as ThemedTrackBar; if (slider != null) slider.Theme = theme;
                 if (control is ComboBox || control is TextBox) control.BackColor = theme.Surface;
             }
-            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = connectionStatus.ForeColor = theme.Muted;
+            previewStatus.ForeColor = positionStatus.ForeColor = themeStatus.ForeColor = footer.ForeColor = transparencyStatus.ForeColor = connectionStatus.ForeColor = claudeStatus.ForeColor = theme.Muted;
             preview.Theme = theme; SetFrameTheme(theme); Invalidate(true);
         }
         private void DrawChoice(object sender, DrawItemEventArgs e)

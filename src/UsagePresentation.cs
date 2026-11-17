@@ -14,8 +14,10 @@ namespace PersonalUsageOverlay
         public readonly string PlanText;
         public readonly double? LowWeeklyRemaining;
         public readonly UsageTone Tone;
+        public readonly ClaudeUsageDisplay Claude;
         private UsagePresentation(string mainText, string detailText, ResetPresentation reset,
-            double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails, string planText)
+            double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails, string planText,
+            ClaudeUsageDisplay claude)
         {
             MainText = mainText;
             DetailText = detailText;
@@ -27,6 +29,7 @@ namespace PersonalUsageOverlay
             HasQueryFailure = hasQueryFailure;
             FailureDetails = failureDetails;
             PlanText = planText;
+            Claude = claude;
         }
 
         public string BadgeDetailText(bool showPlan)
@@ -43,7 +46,8 @@ namespace PersonalUsageOverlay
             return prior != null && prior.MainText == MainText && prior.DetailText == DetailText && prior.PlanText == PlanText
                 && prior.ResetDateText == ResetDateText && prior.CountdownText == CountdownText
                 && prior.LowWeeklyRemaining == LowWeeklyRemaining && prior.Tone == Tone
-                && prior.HasQueryFailure == HasQueryFailure && prior.FailureDetails == FailureDetails;
+                && prior.HasQueryFailure == HasQueryFailure && prior.FailureDetails == FailureDetails
+                && (Claude == null ? prior.Claude == null : Claude.HasSameDisplayAs(prior.Claude));
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now)
@@ -71,10 +75,10 @@ namespace PersonalUsageOverlay
             };
             var reset = WeeklyResetText(windows, startedAt, zone, true);
             return new UsagePresentation("주간 96% 남음", "갱신 " + TimeText(startedAt.ToString("o", CultureInfo.InvariantCulture), zone) + " · 예시",
-                reset, null, UsageTone.Normal, false, String.Empty, "Plus");
+                reset, null, UsageTone.Normal, false, String.Empty, "Plus", ClaudeUsageDisplay.Example(startedAt));
         }
 
-        public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone)
+        public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone, ClaudeUsageDisplay claude = null)
         {
             state = state ?? new UsageState { status = "unavailable" };
             zone = zone ?? TimeZoneInfo.Local;
@@ -106,7 +110,7 @@ namespace PersonalUsageOverlay
             string planText = hasPlanObservation && planName != null ? (fresh ? "" : "이전 ") + planName
                 : status == "loading" && state.observedAt == null ? "요금제 확인 중" : "요금제 확인 불가";
             return new UsagePresentation(mainText, detailText, resetText, lowWeekly, tone,
-                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText);
+                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText, claude);
         }
 
         private static string PlanName(string value)

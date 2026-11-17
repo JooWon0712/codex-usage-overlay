@@ -4,6 +4,7 @@
 /install-test-results.json
 /runtime-paths.json
 /runtime-status.json
+/claude-usage.json
 /settings.json
 /UsageOverlay.exe
 *.pdb

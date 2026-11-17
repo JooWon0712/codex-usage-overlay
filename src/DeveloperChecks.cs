@@ -25,6 +25,7 @@ namespace PersonalUsageOverlay
             BadgeLayoutChecks.Run(checks);
             UsagePresentationChecks.Run(checks);
             PreviewPresentationChecks.Run(checks);
+            ClaudeUsageChecks.Run(checks);
             PlanPresentationChecks.Run(checks);
             PositionAdjustmentChecks.Run(checks);
             BadgeZOrderChecks.Run(checks);
@@ -302,6 +303,22 @@ namespace PersonalUsageOverlay
                         }
                         window.Hide();
                     }
+            foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
+            {
+                var host = new SettingsPreviewHost(theme);
+                host.SetBadgeLayout(new BadgeLayoutSettings { ShowClaude = true });
+                using (var window = new SettingsWindow(host, 1.5f))
+                {
+                    window.ShowInTaskbar = false;
+                    window.StartPosition = FormStartPosition.Manual;
+                    window.Location = new Point(-32000, -32000);
+                    window.Opacity = 0;
+                    window.Show();
+                    using (var bitmap = window.RenderClientPreview())
+                        bitmap.Save(Path.Combine(directory, theme.IsDark ? "claude-preview-dark.png" : "claude-preview-light.png"), System.Drawing.Imaging.ImageFormat.Png);
+                    window.Hide();
+                }
+            }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 for (int mask = 0; mask < 4; mask++)
                     foreach (float scale in new[] { 1f, 1.5f, 2f })

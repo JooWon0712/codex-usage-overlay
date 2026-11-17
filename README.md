@@ -1,6 +1,6 @@
 # Codex Usage Overlay
 
-Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 소스 버전은 **1.0.3 포터블 버전**입니다.
+Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 소스 버전은 **1.1.0 포터블 버전**입니다.
 
 문서화된 [Codex App Server](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)의 `account/rateLimits/read`를 사용합니다. OpenAI의 공식 제품이나 공식 확장 프로그램은 아닙니다.
 
@@ -29,6 +29,7 @@ Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 �
 
 - 실제 세션 제목 아래 또는 사이드바에 표시하고 위치를 보정합니다. 창 위치·크기·화면 배율에 맞춰 배치하며 클릭은 아래 앱으로 통과합니다.
 - 계정의 주간·5시간 한도, 마지막 성공 갱신 시각, 구독 요금제와 주간 초기화 날짜·D-day를 표시합니다. 대화 글자 수나 세션 토큰으로 계정 한도를 추정하지 않습니다.
+- Claude Desktop의 로컬 Code 세션이나 Claude Code CLI를 사용한다면 같은 배지에 Claude Code의 5시간·주간 한도를 추가할 수 있습니다.
 - 조회 중·실패·오래된 값·확인 불가를 구분합니다. 주간 잔여율이 **15% 미만**이면 부족 문구와 색으로, 0%이면 소진 상태로 표시합니다.
 - 라이트 **뉴트럴잉크**, 다크 **뉴트럴차콜**, Codex/Windows 테마 따라가기와 배경 투명도 조절을 제공합니다.
 - 트레이 없는 일반 창 프로그램입니다. **X 또는 종료 버튼으로 완전히 종료**하며 최소화 중에도 Codex가 활성 상태이면 배지와 조회가 계속됩니다. 자동 시작·예약 작업은 등록하지 않습니다.
@@ -54,7 +55,7 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 2. 폴더 안의 `UsageOverlay.exe`를 두 번 눌러 실행합니다. 일반 실행에는 인수가 필요하지 않습니다.
 3. 업데이트하거나 위치를 옮길 때는 **X로 완전히 종료한 뒤 전체 폴더를 교체하거나 이동**합니다.
 
-`UsageOverlay.exe`, `worker.mjs`, `probe.mjs`, `usage-state.mjs`, `runtime-paths.json`을 같은 폴더에 유지하세요. EXE만 옮기거나 ZIP 안에서 바로 실행하지 않습니다. `Setup.exe`나 설치 스크립트 실행, 고정 경로 설치, 관리자 권한은 필요하지 않습니다.
+`UsageOverlay.exe`, `worker.mjs`, `probe.mjs`, `usage-state.mjs`, `runtime-paths.json`, `claude-statusline.mjs`와 `claude-code-overlay/`를 압축을 풀었을 때의 구성대로 유지하세요. `Setup.exe`나 설치 스크립트 실행, 고정 경로 설치, 관리자 권한은 필요하지 않습니다.
 
 `runtime-paths.json`은 Node/Codex 실행 파일의 절대 경로 또는 EXE 폴더 기준 상대 경로를 지원합니다. 지정한 실행 파일이 없으면 `PATH`에서 `node.exe`·`codex.exe`를 찾습니다. Codex CLI를 찾지 못하면 Windows에 현재 사용자용으로 등록된 Codex 데스크톱 x64 패키지에서 찾습니다. 다른 PC에서는 그 PC의 Node/Codex 설치·계정 인증·경로 설정이 필요합니다. 실행 중 사용하던 Codex 파일이 사라지면 자동 조회나 **지금 갱신**에서 새 경로를 찾아 연결합니다.
 
@@ -69,6 +70,7 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 | 구독 요금제 | 기본 켜짐. 갱신 상태·시각 옆에 표시 |
 | 주간 초기화 날짜·시각 | 세 번째 줄에 실제 주간 초기화 일정 표시 |
 | 초기화 D-day | 첫 줄의 남은 한도 바로 오른쪽에 표시 |
+| Claude Code 한도 표시 | 기본 꺼짐. 실제 배지와 설정 미리보기에 Claude Code 항목 추가 |
 | 배경 투명도 | 0~100%, **10% 단위**. 기본 0%는 불투명 |
 | 표시 위치 | 기본 **세션 제목 아래**, 또는 **사이드바** |
 | 테마 | Codex 따라가기 / Windows 따라가기 / 라이트 / 다크 |
@@ -83,9 +85,60 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 
 일반 사용에서는 Codex가 전경일 때 표시합니다. Codex가 최소화·숨김 상태이거나 다른 앱이 전경이면 숨깁니다. 설정 창 최소화는 프로그램 종료가 아니며 작업 표시줄에서 복원할 수 있습니다. 제목 표시줄의 전용 앱 아이콘은 시스템 트레이 등록과 관계없습니다.
 
+## Claude Code 한도 표시
+
+**오버레이** 탭에서 **Claude Code 한도 표시**를 켜면 Codex 창 위 배지에 Claude Code의 5시간·주간 잔여율, 초기화 시각과 마지막 수신 시각이 추가됩니다. 데이터 파일이 없으면 **Claude Code · 한도 수신 대기**, 파일을 읽을 수 없으면 **데이터 확인 불가**로 표시합니다. 개별 한도가 빠졌으면 **확인 불가**, 초기화 시각이 지났으면 **초기화 후 갱신 대기**로 표시합니다. 설정 미리보기는 5시간 76%·주간 59%의 고정 예시를 사용합니다.
+
+두 연동 방식은 `%LOCALAPPDATA%\CodexUsageOverlay\claude-usage.json`에 같은 형식으로 두 기간의 사용률과 초기화 시각, 로컬 수신 시각만 저장합니다. 이 연동은 별도 모델 요청을 보내지 않으며, 배지에 표시된 마지막 수신 시각은 Claude 서버의 조회 시각과 다를 수 있습니다. Claude 화면과 표시 시점이 다르면 잔여율에 차이가 날 수 있습니다. 같은 파일을 갱신하는 연동은 하나만 사용하세요.
+
+### Claude Desktop Code 탭에서 받기
+
+ZIP에 포함된 `claude-code-overlay/` 플러그인은 로컬 Code 세션이 시작되거나 Claude Code에서 한도 변경을 알릴 때 이미 알려진 값을 전달합니다. 시작 시 한도 데이터가 아직 없으면 Claude Code가 값을 제공한 뒤에 표시됩니다. Windows의 Claude Desktop 로컬 Code 세션에서 내장 Claude Code 2.1.286 이상이 필요합니다. WSL 세션에서는 플러그인을 사용할 수 없습니다. [Claude Code Mods 지원 환경](https://code.claude.com/docs/en/plugins/mods#where-mods-run)
+
+처음 설치할 때만 PowerShell에서 Claude Code의 플러그인 관리 명령을 실행합니다. `claude`를 사용할 수 있는 환경에서 예제의 폴더 경로를 ZIP을 풀어 놓은 실제 경로로 바꾸세요.
+
+```powershell
+claude plugin marketplace add 'C:\Apps\Codex Usage Overlay\claude-code-overlay' --scope user
+claude plugin install usage-overlay-bridge@codex-usage-overlay --scope user
+```
+
+Claude Desktop에서 새 로컬 **Code** 세션을 열거나 기존 세션의 입력창에 `/reload-plugins`를 입력합니다. 설치 후에는 별도 Claude CLI 세션을 열어 둘 필요가 없습니다. 개인 플러그인 `usage-band` 0.1.1로 이미 한도를 전달받고 있다면 같은 파일을 그대로 읽으므로 이 설치를 건너뛰어도 됩니다. [플러그인 설치 명령](https://code.claude.com/docs/en/plugins/cli-reference#plugin-marketplace-add) · [Desktop 세션에서 플러그인 다시 불러오기](https://code.claude.com/docs/en/plugins/cli-reference#sessions-without-an-interactive-terminal)
+
+포터블 폴더를 옮겨 동봉 플러그인의 등록 경로를 바꾸려면 `claude plugin marketplace remove codex-usage-overlay --scope user`로 기존 등록을 제거한 뒤 새 경로로 위 두 명령을 다시 실행합니다. [로컬 마켓플레이스 제거](https://code.claude.com/docs/en/plugins/cli-reference#plugin-marketplace-remove)
+
+### Claude Code CLI 상태줄에서 받기
+
+터미널에서 Claude Code를 쓰는 경우에는 동봉된 `claude-statusline.mjs`로 공식 `statusLine` JSON에서 같은 한도를 받아올 수 있습니다. 지원되는 구독에서 첫 API 응답 이후 한도가 제공될 수 있으며 각 기간의 값이 빠질 수 있습니다. [Claude Code 상태줄 문서](https://code.claude.com/docs/en/statusline)
+
+Claude Code 사용자 설정 `%USERPROFILE%\.claude\settings.json`에 아래 `statusLine` 항목을 직접 추가합니다. 두 경로를 PC의 실제 `node.exe`와 포터블 폴더 안 스크립트의 절대 경로로 바꾸고 `/`를 사용하세요. 다른 설정은 그대로 두고, 기존 `statusLine` 명령이 있는 경우에는 아래 예제로 덮어쓰지 마세요. 함께 사용하려면 원래 표준 입력을 양쪽 명령에 전달하고 기존 명령의 출력을 유지하는 래퍼가 필요합니다.
+
+Git Bash가 설치된 Windows의 설정 예시입니다.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "'C:/Program Files/nodejs/node.exe' 'C:/Apps/Codex Usage Overlay/claude-statusline.mjs'"
+  }
+}
+```
+
+Git Bash가 없어 Claude Code가 PowerShell을 사용한다면 `command` 앞에 호출 연산자 `&`를 붙입니다. [Windows 상태줄 설정](https://code.claude.com/docs/en/statusline#windows-configuration)
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "& 'C:/Program Files/nodejs/node.exe' 'C:/Apps/Codex Usage Overlay/claude-statusline.mjs'"
+  }
+}
+```
+
+Overlay의 표시 옵션을 끄면 배지와 미리보기에서 Claude Code 항목이 사라집니다. 로컬 파일 갱신도 끄려면 사용 중인 플러그인을 비활성화하거나 Claude Code 상태줄 설정을 이전 상태로 복원하세요. 상태줄 연동을 계속 쓰면서 포터블 폴더를 옮겼다면 상태줄 명령의 스크립트 경로도 바꿉니다.
+
 ## 데이터와 갱신 상태
 
-정기 조회는 **Codex가 전경일 때 60초 간격**으로 실행합니다. 설정 중 배지가 보인다는 이유로 추가 조회하지 않으며 수동 갱신은 최소 5초 간격입니다. 마지막 성공으로부터 3분이 지나면 오래된 값으로 구분합니다.
+Codex 한도는 **Codex가 전경일 때 60초 간격**으로 조회합니다. 설정 중 배지가 보인다는 이유로 추가 조회하지 않으며 수동 갱신은 최소 5초 간격입니다. 마지막 성공으로부터 3분이 지나면 오래된 값으로 구분합니다.
 
 | 상태 | 표시 |
 | --- | --- |
@@ -110,7 +163,7 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 
 숫자는 등급 표시명이며 원화 결제 금액이 아닙니다. Free·Go·Plus·Team·Business·Enterprise·Edu는 이름으로, 다른 검증된 특수 코드는 `요금제: edu_plus`처럼 표시합니다. 값이 없거나 지원하지 않으면 확인 불가이며 실패·갱신 중·만료에는 `이전 Pro 100`처럼 구분합니다. 계정 변경 알림 때는 이전 한도와 요금제를 지웁니다.
 
-조회 대상은 **연결된 Codex CLI 계정**이며 데스크톱 앱과 같은 계정이라고 보장하지 않습니다. 프로그램이 인증 토큰 파일을 직접 읽거나 복사하지 않고 사용량·계정 식별자를 디스크에 캐시하지 않습니다. 결제 금액·청구 주기·이메일·인증 정보는 표시하지 않으며 대화 생성·모델 추론·한도 초기화 요청도 하지 않습니다.
+조회 대상은 **연결된 Codex CLI 계정**이며 데스크톱 앱과 같은 계정이라고 보장하지 않습니다. 프로그램이 인증 토큰 파일을 직접 읽거나 복사하지 않고 Codex 사용량과 계정 식별자를 디스크에 캐시하지 않습니다. 결제 금액·청구 주기·이메일·인증 정보는 표시하지 않으며 대화 생성·모델 추론·한도 초기화 요청도 하지 않습니다.
 
 ## 호환성과 제한
 
@@ -125,7 +178,7 @@ Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.t
 
 ```powershell
 .\build.ps1 -PortableRuntimePaths
-node --test probe.test.mjs worker.test.mjs tools/release.test.mjs
+node --test probe.test.mjs worker.test.mjs claude-statusline.test.mjs tools/release.test.mjs
 .\.build\UsageOverlay.exe --self-test .build\geometry-test.json
 .\package.test.ps1
 .\package.ps1 -PortableRuntimePaths

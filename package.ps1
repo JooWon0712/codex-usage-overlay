@@ -4,7 +4,15 @@ param([switch]$PortableRuntimePaths)
 $ErrorActionPreference = 'Stop'
 $script:CuoPortableName = 'codex-usage-overlay'
 $script:CuoPortableArchive = 'codex-usage-overlay-windows-x64.zip'
-$script:CuoPortableFiles = @('UsageOverlay.exe', 'runtime-paths.json', 'worker.mjs', 'probe.mjs', 'usage-state.mjs', 'README.md', '사용안내.txt')
+$script:CuoPreClaudePortableFiles = @('UsageOverlay.exe', 'runtime-paths.json', 'worker.mjs', 'probe.mjs', 'usage-state.mjs', 'README.md', '사용안내.txt')
+$script:CuoStatuslinePortableFiles = $script:CuoPreClaudePortableFiles + 'claude-statusline.mjs'
+$script:CuoBridgeFiles = @(
+    'claude-code-overlay/.claude-plugin/marketplace.json',
+    'claude-code-overlay/.claude-plugin/plugin.json',
+    'claude-code-overlay/hooks/hooks.json',
+    'claude-code-overlay/hooks/register.js'
+)
+$script:CuoPortableFiles = $script:CuoStatuslinePortableFiles + $script:CuoBridgeFiles
 
 function Assert-CuoPortableChildPath {
     param([string]$Path, [string]$Root)
@@ -30,39 +38,65 @@ function Assert-CuoPortableNoReparsePoint {
 }
 
 function Assert-CuoPortablePayload {
-    param([string]$Directory, [string]$Root)
+    param([string]$Directory, [string]$Root, [switch]$AllowPreviousLayout)
     $path = Assert-CuoPortableChildPath $Directory $Root
     Assert-CuoPortableNoReparsePoint $path $Root
     if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw 'Portable payload is missing.' }
-    $items = @(Get-ChildItem -LiteralPath $path -Force)
-    if ($items.Count -ne $script:CuoPortableFiles.Count) { throw 'Portable payload must contain the complete application file set only.' }
-    foreach ($item in $items) {
-        if ($item.PSIsContainer -or $item.Name -notin $script:CuoPortableFiles -or $item.Length -eq 0) { throw 'Unexpected or empty portable payload file.' }
-        Assert-CuoPortableNoReparsePoint $item.FullName $Root
+    $files = $script:CuoPortableFiles
+    if ($AllowPreviousLayout -and -not (Test-Path -LiteralPath (Join-Path $path 'claude-code-overlay'))) {
+        $files = $script:CuoStatuslinePortableFiles
+        if (-not [IO.File]::Exists((Join-Path $path 'claude-statusline.mjs'))) { $files = $script:CuoPreClaudePortableFiles }
     }
-    foreach ($name in $script:CuoPortableFiles) { if (-not [IO.File]::Exists((Join-Path $path $name))) { throw "Portable package file missing: $name" } }
+    $expected = @{}
+    foreach ($name in $files) {
+        $file = Join-Path $path $name
+        $expected[$file] = $false
+        $parent = [IO.Path]::GetDirectoryName($file)
+        while ($parent -ine $path) {
+            $expected[$parent] = $true
+            $parent = [IO.Path]::GetDirectoryName($parent)
+        }
+    }
+    $pending = New-Object 'System.Collections.Generic.Stack[string]'
+    $pending.Push($path)
+    while ($pending.Count -gt 0) {
+        foreach ($item in Get-ChildItem -LiteralPath ($pending.Pop()) -Force) {
+            Assert-CuoPortableNoReparsePoint $item.FullName $Root
+            if (-not $expected.ContainsKey($item.FullName) -or $expected[$item.FullName] -ne $item.PSIsContainer) { throw 'Unexpected portable payload entry.' }
+            $expected.Remove($item.FullName)
+            if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+            elseif ($item.Length -eq 0) { throw 'Empty portable payload file.' }
+        }
+    }
+    if ($expected.Count -gt 0) { throw 'Portable payload is incomplete.' }
     $runtime = Get-Content -LiteralPath (Join-Path $path 'runtime-paths.json') -Raw | ConvertFrom-Json
     if ([string]::IsNullOrWhiteSpace($runtime.Node) -or [string]::IsNullOrWhiteSpace($runtime.Codex)) { throw 'Portable runtime configuration is incomplete.' }
 }
 
 function Assert-CuoPortableArchive {
-    param([string]$Archive, [string]$Root, [string]$Payload)
+    param([string]$Archive, [string]$Root, [string]$Payload, [switch]$AllowPreviousLayout)
     $path = Assert-CuoPortableChildPath $Archive $Root
     Assert-CuoPortableNoReparsePoint $path $Root
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($path)
     try {
-        if ($zip.Entries.Count -ne $script:CuoPortableFiles.Count) { throw 'Unexpected portable archive entry count.' }
+        $files = $script:CuoPortableFiles
+        if ($AllowPreviousLayout) {
+            if ($zip.Entries.Count -eq $script:CuoPreClaudePortableFiles.Count) { $files = $script:CuoPreClaudePortableFiles }
+            elseif ($zip.Entries.Count -eq $script:CuoStatuslinePortableFiles.Count) { $files = $script:CuoStatuslinePortableFiles }
+        }
+        if ($zip.Entries.Count -ne $files.Count) { throw 'Unexpected portable archive entry count.' }
         $seen = @{}
         foreach ($entry in $zip.Entries) {
-            if ($entry.FullName -notin $script:CuoPortableFiles -or $entry.Length -eq 0 -or $seen.ContainsKey($entry.FullName)) { throw 'Unexpected portable archive entry.' }
-            $seen[$entry.FullName] = $true
+            $name = $entry.FullName.Replace('\', '/')
+            if ($name -notin $files -or $entry.Length -eq 0 -or $seen.ContainsKey($name)) { throw 'Unexpected portable archive entry.' }
+            $seen[$name] = $true
             if ($Payload) {
                 $stream = $entry.Open()
                 $sha = [Security.Cryptography.SHA256]::Create()
                 try { $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
                 finally { $sha.Dispose(); $stream.Dispose() }
-                if ($hash -ne (Get-FileHash -LiteralPath (Join-Path $Payload $entry.FullName) -Algorithm SHA256).Hash) { throw 'Portable archive does not match its payload.' }
+                if ($hash -ne (Get-FileHash -LiteralPath (Join-Path $Payload $name) -Algorithm SHA256).Hash) { throw 'Portable archive does not match its payload.' }
             }
         }
     } finally { $zip.Dispose() }
@@ -111,14 +145,16 @@ function Publish-CuoPortablePackage {
     $hadTarget = Test-Path -LiteralPath $target
     $hadZip = Test-Path -LiteralPath $targetZip
     if ($hadTarget) {
-        Assert-CuoPortablePayload $target $ProjectRoot
+        Assert-CuoPortablePayload $target $ProjectRoot -AllowPreviousLayout
         # An executable or module held by another process must abort publication.
         foreach ($name in $script:CuoPortableFiles) {
-            $handle = [IO.File]::Open((Join-Path $target $name), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+            $existingFile = Join-Path $target $name
+            if ($name -notin $script:CuoPreClaudePortableFiles -and -not [IO.File]::Exists($existingFile)) { continue }
+            $handle = [IO.File]::Open($existingFile, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
             $handle.Dispose()
         }
     }
-    if ($hadZip) { Assert-CuoPortableArchive $targetZip $ProjectRoot }
+    if ($hadZip) { Assert-CuoPortableArchive $targetZip $ProjectRoot -AllowPreviousLayout }
     $null = New-Item -ItemType Directory -Path $dist -Force
     $movedTarget = $false; $movedZip = $false; $publishedTarget = $false; $publishedZip = $false
     try {
@@ -142,24 +178,35 @@ function Publish-CuoPortablePackage {
     }
 }
 
-function Invoke-CuoPortablePackage {
-    param([switch]$PortableRuntimePaths)
-    $project = [IO.Path]::GetFullPath($PSScriptRoot)
+function New-CuoPortableStage {
+    param([string]$Project, [switch]$PortableRuntimePaths)
     $buildRoot = Assert-CuoPortableChildPath (Join-Path $project '.build') $project
-    $dist = Assert-CuoPortableChildPath (Join-Path $project 'dist') $project
     Assert-CuoPortableNoReparsePoint $buildRoot $project
-    Assert-CuoPortableNoReparsePoint $dist $project
     $null = New-Item -ItemType Directory -Path $buildRoot -Force
     $stage = Assert-CuoPortableChildPath (Join-Path $buildRoot ('portable-stage-' + [Guid]::NewGuid().ToString('N'))) $buildRoot
     $payload = Join-Path $stage 'payload'
     $null = New-Item -ItemType Directory -Path $payload
-    & (Join-Path $project 'build.ps1') -OutputDirectory $payload -PortableRuntimePaths:$PortableRuntimePaths
+    & (Join-Path $project 'build.ps1') -OutputDirectory $payload -PortableRuntimePaths:$PortableRuntimePaths | Out-Host
     foreach ($name in $script:CuoPortableFiles) {
-        if ($name -notin @('UsageOverlay.exe','runtime-paths.json')) { [IO.File]::Copy((Join-Path $project $name), (Join-Path $payload $name), $false) }
+        if ($name -in @('UsageOverlay.exe','runtime-paths.json')) { continue }
+        $source = Join-Path $project $name
+        $destination = Join-Path $payload $name
+        Assert-CuoPortableNoReparsePoint $source $project
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
+        [IO.File]::Copy($source, $destination, $false)
     }
     Assert-CuoPortablePayload $payload $project
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::CreateFromDirectory($payload, (Join-Path $stage $script:CuoPortableArchive), [IO.Compression.CompressionLevel]::Optimal, $false)
+    return $stage
+}
+
+function Invoke-CuoPortablePackage {
+    param([switch]$PortableRuntimePaths)
+    $project = [IO.Path]::GetFullPath($PSScriptRoot)
+    $dist = Assert-CuoPortableChildPath (Join-Path $project 'dist') $project
+    Assert-CuoPortableNoReparsePoint $dist $project
+    $stage = New-CuoPortableStage -Project $project -PortableRuntimePaths:$PortableRuntimePaths
     $update = New-Object Threading.Mutex($false, 'Local\PersonalCodexUsageOverlayUpdateLock')
     $instance = New-Object Threading.Mutex($false, 'Local\PersonalCodexUsageOverlayPrototype')
     $updateOwned = $false; $instanceOwned = $false

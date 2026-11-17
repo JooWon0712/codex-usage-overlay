@@ -10,7 +10,10 @@ namespace PersonalUsageOverlay
         }
 
         public const string Changes =
-            "1.0.3\r\n"
+            "1.1.0\r\n"
+            + "• 오버레이에 Claude Code 5시간·주간 잔여율, 마지막 수신 시각과 초기화 시각을 표시할 수 있습니다.\r\n"
+            + "• Windows용 Claude Desktop의 로컬 Code 세션에서 한도를 전달하는 플러그인을 포터블 ZIP에 포함했습니다.\r\n\r\n"
+            + "1.0.3\r\n"
             + "• 버전 정보와 조회 기록 창의 글꼴 및 다시 그리기 오류를 수정했습니다.\r\n"
             + "• Codex의 세션 제목 메뉴를 인식하고, 배지 왼쪽을 폴더 아이콘에 맞췄습니다.\r\n"
             + "• 사이드바 배지의 기본 하단 여백을 줄였습니다. 기존에 저장된 여백은 유지합니다.\r\n\r\n"

@@ -1,0 +1,6 @@
+{
+  "name": "usage-overlay-bridge",
+  "version": "1.0.0",
+  "description": "Shares Claude Code's 5-hour and weekly plan limits with the Windows Codex Usage Overlay.",
+  "author": { "name": "Codex Usage Overlay contributors" }
+}
