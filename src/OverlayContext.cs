@@ -469,74 +469,12 @@ namespace PersonalUsageOverlay
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8
                 };
-                p.OutputDataReceived += delegate (object sender, DataReceivedEventArgs e)
-                {
-                    if (e.Data == null || quitting)
-                        return;
-                    try
-                    {
-                        var serializer = new JavaScriptSerializer();
-                        var incoming = serializer.Deserialize<UsageState>(e.Data);
-                        if (incoming != null && incoming.type == "lookup-result")
-                        {
-                            var result = serializer.Deserialize<UsageLookupResult>(e.Data);
-                            PostToUi(delegate
-                            {
-                                if (worker == p)
-                                    lookupHistory.Add(result);
-                            });
-                            return;
-                        }
-                        if (incoming == null || incoming.type != "state")
-                            return;
-                        PostToUi(delegate
-                        {
-                            if (worker == p)
-                            {
-                                state = incoming;
-                                workerHasReportedState = true;
-                                if (active && (incoming.status == "stale" || incoming.status == "unavailable"))
-                                    TryRefreshWorkerPath(false);
-                                UpdatePresentation();
-                                UpdateSettings();
-                            }
-                        });
-                    }
-                    catch
-                    {
-                    }
-                };
+                p.OutputDataReceived += WorkerOutputReceived;
                 p.ErrorDataReceived += delegate
                 {
                 }; // Never surface raw server/credential logs.
                 p.EnableRaisingEvents = true;
-                p.Exited += delegate
-                {
-                    PostToUi(delegate
-                    {
-                        if (worker == p)
-                        {
-                            bool restart = workerPathRefreshPending && p.ExitCode == 0;
-                            bool refresh = refreshAfterWorkerExit;
-                            worker = null;
-                            workerHasReportedState = false;
-                            workerPathRefreshPending = false;
-                            refreshAfterWorkerExit = false;
-                            p.Dispose();
-                            if (restart)
-                            {
-                                StartWorker();
-                                if (refresh)
-                                    Send(new { command = "refresh" });
-                                Send(new { command = "active", value = active });
-                            }
-                            else
-                                MarkWorkerFailure("worker_process_exited");
-                            UpdatePresentation();
-                            UpdateSettings();
-                        }
-                    });
-                };
+                p.Exited += WorkerExited;
                 started = p.Start();
                 if (!started)
                     throw new IOException();
@@ -567,6 +505,71 @@ namespace PersonalUsageOverlay
 
                 MarkWorkerFailure("process_start_failed");
             }
+        }
+
+        private void WorkerOutputReceived(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data == null || quitting)
+                return;
+            var source = (Process)sender;
+            try
+            {
+                var serializer = new JavaScriptSerializer();
+                var incoming = serializer.Deserialize<UsageState>(e.Data);
+                if (incoming != null && incoming.type == "lookup-result")
+                {
+                    var result = serializer.Deserialize<UsageLookupResult>(e.Data);
+                    PostToUi(delegate
+                    {
+                        if (worker == source)
+                            lookupHistory.Add(result);
+                    });
+                    return;
+                }
+                if (incoming == null || incoming.type != "state")
+                    return;
+                PostToUi(delegate
+                {
+                    if (worker != source) return;
+                    state = incoming;
+                    workerHasReportedState = true;
+                    if (active && (incoming.status == "stale" || incoming.status == "unavailable"))
+                        TryRefreshWorkerPath(false);
+                    UpdatePresentation();
+                    UpdateSettings();
+                });
+            }
+            catch
+            {
+                // Ignore malformed output so the next state frame can still be handled.
+            }
+        }
+
+        private void WorkerExited(object sender, EventArgs e)
+        {
+            var source = (Process)sender;
+            PostToUi(delegate
+            {
+                if (worker != source) return;
+                bool restart = workerPathRefreshPending && source.ExitCode == 0;
+                bool refresh = refreshAfterWorkerExit;
+                worker = null;
+                workerHasReportedState = false;
+                workerPathRefreshPending = false;
+                refreshAfterWorkerExit = false;
+                source.Dispose();
+                if (restart)
+                {
+                    StartWorker();
+                    if (refresh)
+                        Send(new { command = "refresh" });
+                    Send(new { command = "active", value = active });
+                }
+                else
+                    MarkWorkerFailure("worker_process_exited");
+                UpdatePresentation();
+                UpdateSettings();
+            });
         }
 
         private void MarkWorkerFailure(string reason)

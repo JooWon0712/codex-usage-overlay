@@ -172,12 +172,17 @@ namespace PersonalUsageOverlay
             BadgeLayoutSettings layout, ServiceIcons icons = null)
         {
             theme = theme ?? VisualTheme.Dark;
-            Bitmap bitmap = CreateGlyphBitmap(size, scale, theme, presentation, layout, icons);
+            var normalized = NormalizeLayout(layout);
+            var colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
+            return RenderTextBitmap(size, scale, theme, presentation, normalized, colors, icons);
+        }
+
+        private static Bitmap RenderTextBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation,
+            BadgeLayoutSettings layout, BadgeTextColors colors, ServiceIcons icons)
+        {
+            Bitmap bitmap = RenderGlyphBitmap(size, scale, theme, presentation, layout, colors, icons);
             try
             {
-                var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
-                normalized.Normalize();
-                BadgeTextColors colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
                 if (colors.UseOutline) AddTextUnderlay(bitmap, scale, colors.OutlineColor, colors.UseSoftShadow);
                 return bitmap;
             }
@@ -189,23 +194,36 @@ namespace PersonalUsageOverlay
         internal static Bitmap CreateGlyphBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation,
             BadgeLayoutSettings layout, ServiceIcons icons = null)
         {
-            theme=theme??VisualTheme.Dark;
-            var normalized=layout==null?new BadgeLayoutSettings():layout.Copy(); normalized.Normalize();
-            var bitmap=new Bitmap(size.Width,size.Height,PixelFormat.Format32bppPArgb);
+            theme = theme ?? VisualTheme.Dark;
+            var normalized = NormalizeLayout(layout);
+            var colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
+            return RenderGlyphBitmap(size, scale, theme, presentation, normalized, colors, icons);
+        }
+
+        private static Bitmap RenderGlyphBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation,
+            BadgeLayoutSettings layout, BadgeTextColors colors, ServiceIcons icons)
+        {
+            var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
             try
             {
-                using(var graphics=Graphics.FromImage(bitmap))
+                using (var graphics = Graphics.FromImage(bitmap))
                 {
                     graphics.Clear(Color.Transparent);
-                    graphics.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;
-                    var colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, SystemInformation.HighContrast);
+                    graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                     Bitmap codex = icons == null ? null : (theme.IsDark || colors.Bright ? icons.Codex : icons.CodexLight ?? icons.Codex);
-                    Bitmap claude = icons == null || !normalized.ShowClaude ? null : icons.Claude;
-                    DrawText(graphics, new Rectangle(Point.Empty, size), scale, colors, presentation, normalized, codex, claude);
+                    Bitmap claude = icons == null || !layout.ShowClaude ? null : icons.Claude;
+                    DrawText(graphics, new Rectangle(Point.Empty, size), scale, colors, presentation, layout, codex, claude);
                 }
                 return bitmap;
             }
-            catch {bitmap.Dispose();throw;}
+            catch { bitmap.Dispose(); throw; }
+        }
+
+        private static BadgeLayoutSettings NormalizeLayout(BadgeLayoutSettings layout)
+        {
+            var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
+            normalized.Normalize();
+            return normalized;
         }
 
         internal static int ShadowOffsetY(float scale)
@@ -289,8 +307,7 @@ namespace PersonalUsageOverlay
             if (Single.IsNaN(scale) || Single.IsInfinity(scale) || scale <= 0)
                 scale = 1f;
             theme = theme ?? VisualTheme.Dark;
-            BadgeLayoutSettings normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
-            normalized.Normalize();
+            BadgeLayoutSettings normalized = NormalizeLayout(layout);
             double physicalWidth = (double)normalized.Width * scale;
             double physicalHeight = (double)normalized.Height * scale;
             if (physicalWidth > Int32.MaxValue || physicalHeight > Int32.MaxValue
@@ -301,15 +318,18 @@ namespace PersonalUsageOverlay
             RectangleF clip = RectangleF.Intersect(canvas, bounds);
             if (clip.Width <= 0 || clip.Height <= 0)
                 return;
+            bool highContrast = SystemInformation.HighContrast;
+            var colors = BadgeTextColors.Resolve(theme, normalized.BackgroundTransparency, highContrast);
             GraphicsState saved = g.Save();
             try
             {
                 g.ResetTransform();
                 g.SetClip(clip, CombineMode.Intersect);
-                DrawSurface(g, canvas, scale, theme, presentation, normalized);
+                DrawSurface(g, canvas, scale, theme, presentation, normalized, highContrast);
 
-                using(var text=CreateTextBitmap(new Size((int)Math.Round(physicalWidth),(int)Math.Round(physicalHeight)),scale,theme,presentation,normalized,icons))
-                    g.DrawImageUnscaled(text,bounds.Location);
+                var size = new Size((int)Math.Round(physicalWidth), (int)Math.Round(physicalHeight));
+                using (var text = RenderTextBitmap(size, scale, theme, presentation, normalized, colors, icons))
+                    g.DrawImageUnscaled(text, bounds.Location);
             }
             finally
             {
@@ -319,8 +339,7 @@ namespace PersonalUsageOverlay
 
         internal static Bitmap CreateSurfaceBitmap(Size size, float scale, VisualTheme theme, UsagePresentation presentation, BadgeLayoutSettings layout)
         {
-            var normalized = layout == null ? new BadgeLayoutSettings() : layout.Copy();
-            normalized.Normalize();
+            var normalized = NormalizeLayout(layout);
             var bitmap = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
             try
             {
@@ -328,7 +347,7 @@ namespace PersonalUsageOverlay
                 {
                     graphics.Clear(Color.Transparent);
                     DrawSurface(graphics, new RectangleF(0, 0, normalized.Width * scale, normalized.Height * scale),
-                        scale, theme ?? VisualTheme.Dark, presentation, normalized);
+                        scale, theme ?? VisualTheme.Dark, presentation, normalized, SystemInformation.HighContrast);
                 }
                 return bitmap;
             }
@@ -336,10 +355,9 @@ namespace PersonalUsageOverlay
         }
 
         private static void DrawSurface(Graphics g, RectangleF canvas, float scale, VisualTheme theme,
-            UsagePresentation presentation, BadgeLayoutSettings layout)
+            UsagePresentation presentation, BadgeLayoutSettings layout, bool highContrast)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            bool highContrast = SystemInformation.HighContrast;
             bool low = presentation != null && presentation.Tone == UsageTone.Low;
             bool dark = theme.IsDark;
             byte alpha = BackgroundAlpha(layout.BackgroundTransparency, highContrast);

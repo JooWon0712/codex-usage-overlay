@@ -52,6 +52,26 @@ namespace PersonalUsageOverlay
             Font = new Font("Segoe UI", 12, FontStyle.Regular, GraphicsUnit.Pixel);
             AutoScaleMode = AutoScaleMode.None;
             DoubleBuffered = true;
+
+            BuildHeaderAndTabs();
+            BuildOverlayPage(icons);
+            BuildPositionPage();
+            BuildFooter();
+            BindSettingsEvents();
+
+            uiScale = previewScale ?? Math.Max(96, Native.GetDpiForWindow(Handle)) / 96f;
+            ScaleView(uiScale);
+            ScaleInputs();
+            if (!previewMode)
+                FitWorkArea();
+            SelectPage(0);
+            LoadPreferences();
+            UpdateUsage();
+            ApplyTheme(app.Theme);
+        }
+
+        private void BuildHeaderAndTabs()
+        {
             AddLabel(this, "Codex 잔여 한도", SideMargin, 18, 320, 30, 20, true);
             AddButton(this, "조회 기록", RightEdge - 204, 17, 96, delegate { ShowLookupHistory(); });
             AddButton(this, "버전 정보", RightEdge - 96, 17, 96, delegate
@@ -76,7 +96,10 @@ namespace PersonalUsageOverlay
                 button.Click += delegate { SelectPage(selected); };
                 pageButtons[index] = button; AddUi(this, button);
             }
+        }
 
+        private void BuildOverlayPage(ServiceIcons icons)
+        {
             AddLabel(overlayPage, "오버레이 미리보기", OverlayInset, 8, 240, 22, 12, true);
             AddLabel(overlayPage, "배지 형식", 293, 8, 72, 22, 12, false);
             AddChoice(overlayPage, formatChoice, "배지 형식", new[] { "상세형", "간결형" }, 369, 4, 159);
@@ -117,7 +140,10 @@ namespace PersonalUsageOverlay
             problemDetails.Multiline = true; problemDetails.ReadOnly = true; problemDetails.ScrollBars = ScrollBars.Vertical;
             problemDetails.SetBounds(OverlayInset, 588, OverlayContentWidth, 116); problemDetails.AccessibleName = "조회 실패 원인과 조치";
             problemDetails.Visible = false; AddUi(overlayPage, problemDetails);
+        }
 
+        private void BuildPositionPage()
+        {
             AddLabel(positionPage, "표시 위치", 24, 22, 508, 23, 12, true);
             AddChoice(positionPage, positionChoice, "표시 위치", new[] { "사이드바", "세션 제목 아래" }, 24, 52, 400);
             positionStatus.SetBounds(24, 90, 508, 32); AddUi(positionPage, positionStatus);
@@ -130,14 +156,20 @@ namespace PersonalUsageOverlay
             AddLabel(positionPage, "테마", 24, 264, 508, 24, 12, true);
             AddChoice(positionPage, themeChoice, "테마", new[] { "Codex 따라가기", "Windows 따라가기", "라이트", "다크" }, 24, 294, 400);
             themeStatus.SetBounds(24, 334, 508, 36); AddUi(positionPage, themeStatus);
+        }
 
+        private void BuildFooter()
+        {
             const int footerBottom = BodyHeight - BottomMargin;
             const int footerButtonTop = footerBottom - 32;
             footer.SetBounds(SideMargin, footerBottom - 44, 270, 44); footer.Font = new Font(Font.FontFamily, 11, GraphicsUnit.Pixel); footer.Text = "최소화하면 표시를 유지합니다.\nX 또는 종료를 누르면 완전히 종료됩니다."; AddUi(this, footer);
             AddButton(this, "지금 갱신", RightEdge - 268, footerButtonTop, 84, delegate { app.ManualRefresh(); });
             AddButton(this, "앱에서 확인", RightEdge - 174, footerButtonTop, 86, delegate { WindowState = FormWindowState.Minimized; app.ActivateTarget(); });
             AddButton(this, "종료", RightEdge - 78, footerButtonTop, 78, delegate { app.Quit(); });
+        }
 
+        private void BindSettingsEvents()
+        {
             resetChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             countdownChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
             planChoice.CheckedChanged += delegate { SaveDisplayOptions(); };
@@ -148,12 +180,6 @@ namespace PersonalUsageOverlay
             themeChoice.SelectedIndexChanged += delegate { if (!updating && themeChoice.SelectedIndex >= 0) { app.SetTheme(new[] { "codex", "system", "light", "dark" }[themeChoice.SelectedIndex]); UpdateTheme(); } };
             x.ValueChanged += delegate { if (!updating) app.SetCoordinates((int)x.Value, (int)y.Value); };
             y.ValueChanged += delegate { if (!updating) app.SetCoordinates((int)x.Value, (int)y.Value); };
-            uiScale = previewScale ?? Math.Max(96, Native.GetDpiForWindow(Handle)) / 96f;
-            ScaleView(uiScale);
-            ScaleInputs();
-            if (!previewMode)
-                FitWorkArea();
-            SelectPage(0); LoadPreferences(); UpdateUsage(); ApplyTheme(app.Theme);
         }
 
         private void AddUi(Control parent, Control control)
