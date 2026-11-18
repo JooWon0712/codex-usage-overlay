@@ -2,7 +2,7 @@
 
 Windows용 Codex 데스크톱 앱 위에서 **계정의 남은 사용 한도**를 보는 포터블 도구입니다. Codex의 주간 한도와 선택한 경우 Claude Code의 5시간·주간 한도를 표시합니다.
 
-[Windows x64 포터블 ZIP 다운로드](https://github.com/JooWon0712/codex-usage-overlay/releases/download/v1.2.0/codex-usage-overlay-windows-x64.zip) · [v1.2.0 릴리스와 검증 파일](https://github.com/JooWon0712/codex-usage-overlay/releases/tag/v1.2.0)
+[Windows x64 포터블 ZIP 다운로드](https://github.com/JooWon0712/codex-usage-overlay/releases/download/v1.2.1/codex-usage-overlay-windows-x64.zip) · [v1.2.1 릴리스와 검증 파일](https://github.com/JooWon0712/codex-usage-overlay/releases/tag/v1.2.1)
 
 ## 미리보기
 
@@ -62,7 +62,7 @@ ZIP을 푼 폴더를 그대로 사용합니다. 실행 중에는 작업 표시�
 ## Claude Code 한도 조회
 
 1. Windows용 Claude Code CLI를 설치하고 Claude 구독 계정으로 로그인합니다. [Windows 설치 안내](https://code.claude.com/docs/en/setup#install-on-native-windows)
-2. 오버레이 설정에서 **Claude Code → 한도 표시**를 켭니다. CLI의 구조화된 `/usage`로 **현재 세션**과 **주간 세션**을 조회합니다. v1.2.0의 자동 조회기는 Windows 네이티브 CLI 2.1.273 이상의 2.x 버전을 대상으로 합니다. [Claude Code 사용량 보고서](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
+2. 오버레이 설정에서 **Claude Code → 한도 표시**를 켭니다. CLI의 구조화된 `/usage`로 **현재 세션**과 **주간 세션**을 조회합니다. 자동 조회기는 Windows 네이티브 CLI 2.1.273 이상의 2.x 버전을 대상으로 합니다. [Claude Code 사용량 보고서](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
 3. Claude 항목 아래에서 마지막 갱신 상태나 로그인 안내를 확인합니다. **조회 기록**과 **지금 갱신** 버튼은 Codex 조회에 사용합니다.
 
 기능을 켜면 즉시 확인하고, 일반적으로 조회 완료 후 **15분 뒤** 다시 확인합니다. 오버레이가 실행 중이면 Codex 창 활성 여부와 별개로 동작합니다. 절전 복귀 때 조회 예정 시각이 지났으면 다시 확인하고, 실패가 이어지면 간격을 최대 60분까지 늘립니다. 요금제는 조회 전후의 CLI 인증 상태에서 같은 계정과 같은 값을 확인했을 때 표시합니다.
@@ -94,7 +94,7 @@ claude plugin marketplace add 'C:\Apps\Codex Usage Overlay\claude-code-overlay' 
 claude plugin install usage-overlay-bridge@codex-usage-overlay --scope user
 ```
 
-Claude Desktop의 새 로컬 Code 세션을 열거나 `/reload-plugins`로 다시 불러옵니다. 이 플러그인은 Claude가 이미 제공한 한도 정보를 전달합니다. v1.2.0 번들은 Windows 네이티브 로컬 Code 세션의 CLI 2.1.286 이상을 대상으로 합니다. 포터블 폴더를 옮기면 기존 마켓플레이스를 제거하고 새 경로로 등록합니다. [Claude Code 플러그인 명령](https://code.claude.com/docs/en/plugins/cli-reference) · [Mods 실행 환경](https://code.claude.com/docs/en/plugins/mods#where-mods-run)
+Claude Desktop의 새 로컬 Code 세션을 열거나 `/reload-plugins`로 다시 불러옵니다. 이 플러그인은 Claude가 이미 제공한 한도 정보를 전달합니다. Windows 네이티브 로컬 Code 세션의 CLI 2.1.286 이상을 대상으로 합니다. 포터블 폴더를 옮기면 기존 마켓플레이스를 제거하고 새 경로로 등록합니다. [Claude Code 플러그인 명령](https://code.claude.com/docs/en/plugins/cli-reference) · [Mods 실행 환경](https://code.claude.com/docs/en/plugins/mods#where-mods-run)
 
 **Claude Code CLI 상태줄**을 사용한다면 `%USERPROFILE%\.claude\settings.json`의 `statusLine`에 동봉한 `claude-statusline.mjs`를 연결합니다. 기존 상태줄이 있으면 기존 출력을 보존하는 방식으로 연결하고, 새 상태줄을 구성하는 경우에는 [사용안내](사용안내.txt)의 Git Bash·PowerShell 예시를 참고하세요. [Claude Code 상태줄 문서](https://code.claude.com/docs/en/statusline)
 
@@ -147,15 +147,17 @@ v1.2.0 준비 과정에서 **자체 검사 662개, Node 검사 60개, 패키징 
 [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에서 포터블 ZIP, `SHA256SUMS.txt`, `codex-usage-overlay.intoto.jsonl`을 받을 수 있습니다. 체크섬으로 파일 일치 여부를 확인하고, GitHub CLI로 ZIP과 내부 EXE가 어느 태그·커밋·워크플로에서 빌드됐는지 검증할 수 있습니다. Windows의 Authenticode 서명과 별도로 확인하는 빌드 출처 증명입니다. [GitHub 출처 증명 문서](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
 
 <details>
-<summary>v1.2.0 ZIP 체크섬과 출처 증명 확인 명령</summary>
+<summary>ZIP 체크섬과 출처 증명 확인 명령</summary>
+
+`$sourceSha`에 해당 릴리스의 **Source commit** 전체 SHA를 입력합니다.
 
 ```powershell
 $repo = 'JooWon0712/codex-usage-overlay'
-$tag = 'v1.2.0'
-$sourceSha = 'be35cf7275ac1b5878b42761d17a9abb40aaacfe'
+$tag = 'v1.2.1'
+$sourceSha = 'SOURCE_COMMIT_FROM_RELEASE_NOTES'
 $zipName = 'codex-usage-overlay-windows-x64.zip'
 $bundle = 'codex-usage-overlay.intoto.jsonl'
-$output = 'downloaded-v1.2.0'
+$output = "downloaded-$tag"
 
 gh release download $tag --repo $repo -p $zipName -p SHA256SUMS.txt -p $bundle -D $output
 if ($LASTEXITCODE -ne 0) { throw '릴리스 파일 다운로드 실패' }
@@ -171,7 +173,7 @@ gh attestation verify $zip --bundle (Join-Path $output $bundle) --repo $repo `
 if ($LASTEXITCODE -ne 0) { throw 'ZIP 출처 증명 검증 실패' }
 ```
 
-ZIP을 푼 뒤 위 검증의 파일 경로를 `UsageOverlay.exe`로 바꾸면 같은 증명 번들로 EXE도 확인할 수 있습니다. 체크섬 목록에서 EXE의 항목은 `codex-usage-overlay/UsageOverlay.exe`입니다. 다른 버전에서는 해당 릴리스의 태그와 **Source commit** 전체 SHA를 사용하세요.
+ZIP을 푼 뒤 위 검증의 파일 경로를 `UsageOverlay.exe`로 바꾸면 같은 증명 번들로 EXE도 확인할 수 있습니다. 체크섬 목록에서 EXE의 항목은 `codex-usage-overlay/UsageOverlay.exe`입니다.
 
 </details>
 
