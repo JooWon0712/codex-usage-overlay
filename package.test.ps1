@@ -33,6 +33,8 @@ try {
     Assert-PackageTest ([IO.File]::ReadAllText($exe) -eq 'first:UsageOverlay.exe') 'complete portable payload published'
     $claudeModule = Join-Path $dist 'codex-usage-overlay\claude-statusline.mjs'
     Assert-PackageTest ([IO.File]::ReadAllText($claudeModule) -eq 'first:claude-statusline.mjs') 'legacy payload replaced with Claude module included'
+    $claudeProbe = Join-Path $dist 'codex-usage-overlay\claude-usage-probe.mjs'
+    Assert-PackageTest ([IO.File]::ReadAllText($claudeProbe) -eq 'first:claude-usage-probe.mjs') 'automatic Claude probe published'
     $bridgeManifest = Join-Path $dist 'codex-usage-overlay/claude-code-overlay/.claude-plugin/plugin.json'
     Assert-PackageTest ([IO.File]::Exists($bridgeManifest)) 'Desktop bridge manifest published'
     Assert-PackageTest ([IO.File]::Exists((Join-Path $dist $script:CuoPortableArchive))) 'portable archive published'
@@ -40,6 +42,23 @@ try {
     Assert-PackageTest $true 'archive hashes match every payload file'
     Remove-CuoPortableStage $stage $project
     Assert-PackageTest (-not (Test-Path -LiteralPath $stage)) 'successful transient stage removed'
+
+    foreach ($legacy in @(
+        @{ Name = 'statusline'; Files = $script:CuoStatuslinePortableFiles }
+        @{ Name = 'desktop-bridge'; Files = $script:CuoBridgePortableFiles }
+    )) {
+        $legacyDist = Join-Path $project ('dist-' + $legacy.Name)
+        $null = New-Item -ItemType Directory -Path $legacyDist
+        $legacyStage = New-TestPackage $legacy.Name $legacy.Files
+        [IO.Directory]::Move((Join-Path $legacyStage 'payload'), (Join-Path $legacyDist $script:CuoPortableName))
+        [IO.File]::Move((Join-Path $legacyStage $script:CuoPortableArchive), (Join-Path $legacyDist $script:CuoPortableArchive))
+        $stage = New-TestPackage 'upgraded'
+        Publish-CuoPortablePackage $stage $legacyDist $project
+        $upgradedProbe = Join-Path $legacyDist 'codex-usage-overlay\claude-usage-probe.mjs'
+        Assert-PackageTest ([IO.File]::ReadAllText($upgradedProbe) -eq 'upgraded:claude-usage-probe.mjs') "upgrades $($legacy.Name) package with automatic Claude probe"
+        Remove-CuoPortableStage $legacyStage $project
+        Remove-CuoPortableStage $stage $project
+    }
 
     $stage = New-TestPackage 'second'
     Publish-CuoPortablePackage $stage $dist $project
@@ -60,6 +79,13 @@ try {
     try { Publish-CuoPortablePackage $stage $dist $project } catch { $rejected = $true }
     Assert-PackageTest $rejected 'missing Desktop bridge manifest rejects publication'
     Assert-PackageTest ([IO.File]::Exists($bridgeManifest)) 'missing bridge manifest preserves current package'
+    Remove-CuoPortableStage $stage $project
+
+    $stage = New-TestPackage 'bridge-as-current' $script:CuoBridgePortableFiles
+    $rejected = $false
+    try { Publish-CuoPortablePackage $stage $dist $project } catch { $rejected = $true }
+    Assert-PackageTest $rejected 'current package requires the automatic Claude probe'
+    Assert-PackageTest ([IO.File]::ReadAllText($claudeProbe) -eq 'second:claude-usage-probe.mjs') 'missing automatic Claude probe preserves current package'
     Remove-CuoPortableStage $stage $project
 
     $stage = New-TestPackage 'missing'

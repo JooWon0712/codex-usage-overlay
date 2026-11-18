@@ -47,11 +47,11 @@ jobs:
           node tools/release-policy.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Source or version-tag validation failed.' }
 
-      - name: Test worker, normalizer, Claude statusline and release guards with synthetic data
+      - name: Test usage readers and release guards with synthetic data
         run: |
           node --check claude-code-overlay/hooks/register.js
           if ($LASTEXITCODE -ne 0) { throw 'Claude Desktop bridge syntax check failed.' }
-          node --test probe.test.mjs worker.test.mjs claude-statusline.test.mjs tools/release.test.mjs
+          node --test probe.test.mjs worker.test.mjs claude-statusline.test.mjs claude-usage-probe.test.mjs tools/release.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Node tests failed.' }
 
       - name: Test portable package publication

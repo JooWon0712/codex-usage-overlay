@@ -26,6 +26,7 @@ namespace PersonalUsageOverlay
             UsagePresentationChecks.Run(checks);
             PreviewPresentationChecks.Run(checks);
             ClaudeUsageChecks.Run(checks);
+            ClaudeAutoRefreshChecks.Run(checks);
             PlanPresentationChecks.Run(checks);
             PositionAdjustmentChecks.Run(checks);
             BadgeZOrderChecks.Run(checks);
@@ -36,7 +37,9 @@ namespace PersonalUsageOverlay
             ThemedPaintChecks.Run(checks);
             ThemedInputChecks.Run(checks);
             BadgeTransparencyChecks.Run(checks);
+            BadgeMeterChecks.Run(checks);
             LayeredWindowChecks.Run(checks);
+            BadgeFormatButtonChecks.Run(checks);
             var now = DateTimeOffset.Parse("2020-01-01T00:03:00Z", CultureInfo.InvariantCulture);
             var quota = new UsageState
             {
@@ -150,17 +153,26 @@ namespace PersonalUsageOverlay
             var preferences = new Preferences();
             checks["below_title_is_default"] = preferences.Position == Preferences.BelowTitle;
             var sidebar = new Preferences { Position = "sidebar" };
-            checks["sidebar_new_default_uses_smaller_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,902,320,82);
-            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,853,480,123);
+            checks["sidebar_new_default_uses_smaller_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,906,320,78);
+            checks["sidebar_negative_monitor_at_150_percent"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,sidebar) == new Rectangle(-2464,859,480,117);
             sidebar.SidebarY = 82;
-            checks["sidebar_preserves_legacy_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,882,320,82);
+            checks["sidebar_preserves_legacy_bottom_gap"] = OverlayLayout.CalculateBounds(new Rectangle(100,200,1200,800),1,sidebar) == new Rectangle(164,886,320,78);
             checks["tiny_sidebar_hides_full_badge_instead_of_clipping"] = OverlayLayout.CalculateBounds(new Rectangle(0,0,100,30),1,sidebar).IsEmpty;
             var client = new Rectangle(59,104,2944,1877);
             var anchor = new TitleAnchorObservation { Status="ok",TitleBounds=new Rectangle(585,195,199,28),HeaderBounds=new Rectangle(507,170,2491,78) };
             checks["unavailable_title_never_falls_back_over_sidebar"] = OverlayLayout.CalculateBounds(client,1.5f,preferences).IsEmpty;
-            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(540,257,480,123);
-            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(555,254,320,82);
-            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(531,260,640,164);
+            checks["real_header_fixture_at_150_percent"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(540,257,480,117);
+            checks["physical_anchor_not_rescaled_at_100_percent"] = OverlayLayout.CalculateBounds(client,1,preferences,anchor) == new Rectangle(555,254,320,78);
+            checks["physical_anchor_not_rescaled_at_200_percent"] = OverlayLayout.CalculateBounds(client,2,preferences,anchor) == new Rectangle(531,260,640,156);
+            var compact = new Preferences { BadgeLayout = new BadgeLayoutSettings { Compact = true } };
+            var shortClient = new Rectangle(59,104,2944,255);
+            checks["compact_badge_keeps_title_anchor_and_fits_in_shorter_client"] =
+                OverlayLayout.CalculateBounds(shortClient,1.5f,preferences,anchor).IsEmpty
+                && OverlayLayout.CalculateBounds(shortClient,1.5f,compact,anchor) == new Rectangle(540,257,438,93);
+            compact.BadgeLayout.ShowClaude = true;
+            checks["compact_badge_expands_for_claude_without_moving_title_anchor"] =
+                OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,329),1.5f,compact,anchor) == new Rectangle(540,257,516,176)
+                && OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,328),1.5f,compact,anchor).IsEmpty;
             var menuAnchor = new TitleAnchorObservation { Status="ok", HeaderBounds=new Rectangle(49,8,900,79),
                 TitleBounds=new Rectangle(113,40,185,22), TitleMenuBounds=new Rectangle(70,20,265,54) };
             var menuClient = new Rectangle(0,0,1000,700);
@@ -177,7 +189,7 @@ namespace PersonalUsageOverlay
                 && preferences.TitleGap == 6 && Preferences.DefaultTitleOffsetX == 0;
             preferences.TitleOffsetX=12; preferences.TitleGap=10;
             string stored = new JavaScriptSerializer().Serialize(preferences);
-            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(558,263,480,123);
+            checks["title_relative_manual_offsets"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(558,263,480,117);
             checks["title_manual_offset_is_additional_to_new_baseline_without_mutating_preferences"] = stored == new JavaScriptSerializer().Serialize(preferences)
                 && OverlayLayout.CalculateBounds(client,1.25f,preferences,anchor).Left == 563;
             preferences.ResetCurrentPosition();
@@ -186,14 +198,14 @@ namespace PersonalUsageOverlay
                 && OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 525
                 && OverlayLayout.CalculateBounds(client,2,preferences,anchor).Left == 531;
             anchor.TitleBounds=new Rectangle(2900,195,80,28);
-            checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2518,257,480,123);
+            checks["right_edge_clamps_within_content"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(2518,257,480,117);
             anchor.TitleBounds=new Rectangle(585,195,199,28); preferences.TitleOffsetX=-4000;
             checks["negative_offset_cannot_remove_content_edge_gutter"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).Left == 525;
             preferences.ResetCurrentPosition();
             anchor.HeaderBounds=new Rectangle(107,170,2891,78); anchor.TitleBounds=new Rectangle(185,195,199,28);
-            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(140,257,480,123);
+            checks["sidebar_layout_changes_without_client_resize"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor) == new Rectangle(140,257,480,117);
             anchor.HeaderBounds=new Rectangle(-2112,-134,1547,78); anchor.TitleBounds=new Rectangle(-2034,-109,199,28);
-            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2079,-47,480,123);
+            checks["anchored_negative_monitor_coordinates"] = OverlayLayout.CalculateBounds(new Rectangle(-2560,-200,2000,1200),1.5f,preferences,anchor) == new Rectangle(-2079,-47,480,117);
             anchor.HeaderBounds=new Rectangle(507,170,70,78); anchor.TitleBounds=new Rectangle(517,195,40,28);
             checks["insufficient_content_width_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.HeaderBounds = new Rectangle(507,170,480,78);
@@ -202,7 +214,7 @@ namespace PersonalUsageOverlay
             checks["insufficient_space_below_header_hides_badge"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,150),1.5f,preferences,anchor).IsEmpty;
             checks["partial_height_does_not_cut_reset_or_countdown"] = OverlayLayout.CalculateBounds(new Rectangle(59,104,2944,250),1.5f,preferences,anchor).IsEmpty;
             var large = new Preferences { BadgeLayout = new BadgeLayoutSettings { Width=600,Height=300 } };
-            checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(540,257,480,123);
+            checks["legacy_custom_canvas_is_replaced_by_fixed_dimensions"] = OverlayLayout.CalculateBounds(client,1.5f,large,anchor) == new Rectangle(540,257,480,117);
             checks["extreme_unnormalized_title_offsets_clamp_without_integer_wraparound"] = OverlayLayout.CalculateBounds(client,1.5f,
                 new Preferences { TitleOffsetX=int.MinValue },anchor).Left == 525
                 && OverlayLayout.CalculateBounds(client,1.5f,new Preferences { TitleOffsetX=int.MaxValue },anchor).Left == 2518;
@@ -210,11 +222,41 @@ namespace PersonalUsageOverlay
             checks["ambiguous_title_hides_badge"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
             anchor.Status="ok"; anchor.TitleBounds=new Rectangle(80,195,199,28);
             checks["title_outside_content_header_rejected"] = OverlayLayout.CalculateBounds(client,1.5f,preferences,anchor).IsEmpty;
+            CheckStackedBadgeFit(checks, client);
             DateTime now=new DateTime(2020,1,1,0,0,10,DateTimeKind.Utc);
             checks["fresh_anchor_before_expiry"] = TitleAnchorTracker.IsFresh(now.AddMilliseconds(-1999),now);
             checks["anchor_expires_at_two_seconds"] = !TitleAnchorTracker.IsFresh(now.AddSeconds(-2),now);
             checks["future_anchor_rejected"] = !TitleAnchorTracker.IsFresh(now.AddSeconds(1),now);
             checks["old_anchor_rejected"] = !TitleAnchorTracker.IsFresh(now.AddMinutes(-1),now);
+        }
+
+        private static void CheckStackedBadgeFit(Dictionary<string, bool> checks, Rectangle client)
+        {
+            var stacked = new Preferences { TitleOffsetX = 12, TitleGap = 10, BadgeLayout = new BadgeLayoutSettings { ShowClaude = true } };
+            var anchor = new TitleAnchorObservation { Status = "ok", TitleBounds = new Rectangle(585, 195, 199, 28),
+                HeaderBounds = new Rectangle(507, 170, 2491, 78) };
+            float badgeScale;
+            checks["stacked_claude_title_badge_uses_full_scale_in_roomy_windows"] =
+                OverlayLayout.CalculateBounds(client, 1.5f, stacked, anchor, out badgeScale) == new Rectangle(558, 263, 480, 314)
+                && badgeScale == 1.5f;
+            var shortClient = new Rectangle(client.Left, client.Top, client.Width, 533 - client.Top);
+            checks["stacked_claude_title_badge_preserves_dpi_offsets_when_scaled_to_height"] =
+                OverlayLayout.CalculateBounds(shortClient, 1.5f, stacked, anchor, out badgeScale) == new Rectangle(558, 263, 413, 270)
+                && Math.Abs(badgeScale - 270f / 209) < 0.0001f;
+            anchor.HeaderBounds = new Rectangle(507, 170, 434, 78);
+            checks["stacked_claude_title_badge_preserves_ratio_and_gutter_at_narrow_width"] =
+                OverlayLayout.CalculateBounds(client, 1.5f, stacked, anchor, out badgeScale) == new Rectangle(525, 263, 416, 272)
+                && badgeScale == 1.3f;
+            anchor.HeaderBounds = new Rectangle(507, 170, 402, 78);
+            bool fitsAtMinimum = OverlayLayout.CalculateBounds(client, 1.5f, stacked, anchor, out badgeScale)
+                == new Rectangle(525, 263, 384, 251) && Math.Abs(badgeScale - 1.2f) < 0.0001f;
+            anchor.HeaderBounds = new Rectangle(507, 170, 401, 78);
+            checks["stacked_claude_title_badge_hides_if_it_cannot_fit_minimum_readable_width"] =
+                fitsAtMinimum && OverlayLayout.CalculateBounds(client, 1.5f, stacked, anchor, out badgeScale).IsEmpty;
+            stacked.Position = "sidebar";
+            checks["stacked_claude_sidebar_can_scale_on_a_negative_coordinate_monitor"] =
+                OverlayLayout.CalculateBounds(new Rectangle(-800, 100, 416, 700), 1.5f, stacked, null, out badgeScale)
+                == new Rectangle(-800, 504, 416, 272) && badgeScale == 1.3f;
         }
 
         private static void CheckTitleElements(Dictionary<string, bool> checks)
@@ -304,21 +346,23 @@ namespace PersonalUsageOverlay
                         window.Hide();
                     }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
-            {
-                var host = new SettingsPreviewHost(theme);
-                host.SetBadgeLayout(new BadgeLayoutSettings { ShowClaude = true });
-                using (var window = new SettingsWindow(host, 1.5f))
+                foreach (bool compact in new[] { false, true })
                 {
-                    window.ShowInTaskbar = false;
-                    window.StartPosition = FormStartPosition.Manual;
-                    window.Location = new Point(-32000, -32000);
-                    window.Opacity = 0;
-                    window.Show();
-                    using (var bitmap = window.RenderClientPreview())
-                        bitmap.Save(Path.Combine(directory, theme.IsDark ? "claude-preview-dark.png" : "claude-preview-light.png"), System.Drawing.Imaging.ImageFormat.Png);
-                    window.Hide();
+                    var host = new SettingsPreviewHost(theme);
+                    host.SetBadgeLayout(new BadgeLayoutSettings { ShowClaude = true, Compact = compact });
+                    using (var window = new SettingsWindow(host, 1.5f))
+                    {
+                        window.ShowInTaskbar = false;
+                        window.StartPosition = FormStartPosition.Manual;
+                        window.Location = new Point(-32000, -32000);
+                        window.Opacity = 0;
+                        window.Show();
+                        string name = "claude-preview-" + (theme.IsDark ? "dark" : "light") + (compact ? "-compact" : "") + ".png";
+                        using (var bitmap = window.RenderClientPreview())
+                            bitmap.Save(Path.Combine(directory, name), System.Drawing.Imaging.ImageFormat.Png);
+                        window.Hide();
+                    }
                 }
-            }
             foreach (var theme in new[] { VisualTheme.Dark, VisualTheme.Light })
                 for (int mask = 0; mask < 4; mask++)
                     foreach (float scale in new[] { 1f, 1.5f, 2f })

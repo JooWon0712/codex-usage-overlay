@@ -10,6 +10,7 @@ namespace PersonalUsageOverlay
         public BadgeLayoutSettings LayoutSettings = new BadgeLayoutSettings();
         public VisualTheme Theme = VisualTheme.Dark;
         public float ScaleFactor = 1;
+        internal ServiceIcons Icons { get; set; }
         private Bitmap surface;
         private UsagePresentation renderedPresentation;
         private BadgeLayoutSettings renderedLayout;
@@ -54,7 +55,7 @@ namespace PersonalUsageOverlay
                 || renderedContrast!=contrast || renderedTransparency!=LayoutSettings.BackgroundTransparency;
             if(dirty)
             {
-                Bitmap updated=BadgeRenderer.CreateBitmap(ClientSize,ScaleFactor,Theme,Presentation,LayoutSettings);
+                Bitmap updated=BadgeRenderer.CreateBitmap(ClientSize,ScaleFactor,Theme,Presentation,LayoutSettings,Icons);
                 if(surface!=null) surface.Dispose(); surface=updated;
                 renderedPresentation=Presentation; renderedLayout=LayoutSettings; renderedTheme=Theme; renderedScale=ScaleFactor;
                 renderedContrast=contrast; renderedTransparency=LayoutSettings.BackgroundTransparency;

@@ -20,9 +20,22 @@ namespace PersonalUsageOverlay
 
         public static string FindCli()
         {
+            string directory = FindPackageDirectory();
+            if (directory == null) return null;
+            string cli = Path.Combine(directory, "app", "resources", "codex.exe");
+            return File.Exists(cli) ? cli : null;
+        }
+
+        internal static string FindPackageDirectory()
+        {
+            return FindPackageDirectory(PackageName, PublisherId);
+        }
+
+        internal static string FindPackageDirectory(string packageName, string publisherId)
+        {
             // A Store update changes the package full name, but not its family.
             // Windows returns only registrations for the current user.
-            string familyName = PackageName + "_" + PublisherId;
+            string familyName = packageName + "_" + publisherId;
             uint count = 0, length = 0;
             if (GetPackagesByPackageFamily(familyName, ref count, null, ref length, IntPtr.Zero) != InsufficientBuffer
                 || count == 0 || count > 1024 || length == 0 || length > 262144)
@@ -44,9 +57,9 @@ namespace PersonalUsageOverlay
                         continue;
                     string[] parts = name.Split('_');
                     Version version;
-                    if (parts.Length != 5 || !parts[0].Equals(PackageName, StringComparison.OrdinalIgnoreCase)
+                    if (parts.Length != 5 || !parts[0].Equals(packageName, StringComparison.OrdinalIgnoreCase)
                         || !parts[2].Equals("x64", StringComparison.OrdinalIgnoreCase) || parts[3].Length != 0
-                        || !parts[4].Equals(PublisherId, StringComparison.OrdinalIgnoreCase)
+                        || !parts[4].Equals(publisherId, StringComparison.OrdinalIgnoreCase)
                         || !Version.TryParse(parts[1], out version) || version.Revision < 0)
                         continue;
                     if (latestVersion == null || version > latestVersion)
@@ -56,7 +69,7 @@ namespace PersonalUsageOverlay
                     }
                 }
 
-                return latest == null ? null : FindPackageCli(latest);
+                return latest == null ? null : GetPackageDirectory(latest);
             }
             finally
             {
@@ -64,7 +77,7 @@ namespace PersonalUsageOverlay
             }
         }
 
-        private static string FindPackageCli(string fullName)
+        private static string GetPackageDirectory(string fullName)
         {
             uint length = 0;
             if (GetPackagePathByFullName(fullName, ref length, null) != InsufficientBuffer
@@ -74,8 +87,7 @@ namespace PersonalUsageOverlay
             if (GetPackagePathByFullName(fullName, ref length, path) != 0)
                 return null;
 
-            string cli = Path.Combine(path.ToString(), "app", "resources", "codex.exe");
-            return File.Exists(cli) ? cli : null;
+            return path.ToString();
         }
     }
 }

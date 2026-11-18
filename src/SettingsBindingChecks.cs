@@ -12,6 +12,7 @@ namespace PersonalUsageOverlay
         public static void Run(Dictionary<string, bool> checks)
         {
             CheckInMemorySettingsBindings(checks);
+            CheckFormatBindings(checks);
             CheckPreviewCanvasBindings(checks);
             CheckTransparencyBindings(checks);
             CheckFailureDisclosure(checks);
@@ -54,26 +55,31 @@ namespace PersonalUsageOverlay
                 CheckCommonSettingsDisplay(checks, window, host);
 
                 reset.Checked = false;
-                checks["settings_binding_reset_date_off_keeps_inline_countdown_at_compact_height"] = OptionsMatch(preview, host, false, true)
-                    && preview.LayoutSettings.Height == 58 && host.Prefs.BadgeLayout.Height == 58
-                    && Find(preview.LayoutSettings, "countdown").Y == 6;
+                checks["settings_binding_reset_date_off_keeps_inline_countdown_at_fixed_detailed_height"] = OptionsMatch(preview, host, false, true)
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight
+                    && host.Prefs.BadgeLayout.Height == BadgeLayoutSettings.DetailedHeight
+                    && Find(preview.LayoutSettings, "countdown").Y == Find(preview.LayoutSettings, "remaining").Y;
                 reset.Checked = true;
-                checks["settings_binding_reset_date_on_updates_preview_and_saved_choice"] = OptionsMatch(preview, host, true, true);
+                checks["settings_binding_reset_date_on_keeps_countdown_inline_in_preview_and_preferences"] = OptionsMatch(preview, host, true, true)
+                    && Find(preview.LayoutSettings, "countdown").Y == Find(preview.LayoutSettings, "weekly-reset").Y
+                    && Find(host.Prefs.BadgeLayout, "countdown").Y == Find(host.Prefs.BadgeLayout, "weekly-reset").Y;
                 countdown.Checked = false;
-                checks["settings_binding_countdown_off_keeps_reset_date_and_full_height"] = OptionsMatch(preview, host, true, false)
-                    && preview.LayoutSettings.Height == 82;
+                checks["settings_binding_countdown_off_keeps_reset_date_and_fixed_height"] = OptionsMatch(preview, host, true, false)
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight;
                 countdown.Checked = true;
                 checks["settings_binding_countdown_on_updates_preview_and_saved_choice"] = OptionsMatch(preview, host, true, true);
                 reset.Checked = countdown.Checked = false;
-                checks["settings_binding_all_optional_fields_off_use_compact_height"] = OptionsMatch(preview, host, false, false)
-                    && preview.LayoutSettings.Height == 58 && host.Prefs.BadgeLayout.Height == 58;
+                checks["settings_binding_all_optional_fields_off_keep_fixed_detailed_height"] = OptionsMatch(preview, host, false, false)
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight
+                    && host.Prefs.BadgeLayout.Height == BadgeLayoutSettings.DetailedHeight;
                 reset.Checked = true;
-                checks["settings_binding_any_reset_date_restores_full_height"] = OptionsMatch(preview, host, true, false)
-                    && preview.LayoutSettings.Height == 82;
+                checks["settings_binding_reset_date_alone_keeps_fixed_height"] = OptionsMatch(preview, host, true, false)
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight;
                 reset.Checked = false;
                 countdown.Checked = true;
-                checks["settings_binding_countdown_alone_keeps_compact_height"] = OptionsMatch(preview, host, false, true)
-                    && preview.LayoutSettings.Height == 58 && host.Prefs.BadgeLayout.Height == 58;
+                checks["settings_binding_countdown_alone_keeps_fixed_detailed_height"] = OptionsMatch(preview, host, false, true)
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight
+                    && host.Prefs.BadgeLayout.Height == BadgeLayoutSettings.DetailedHeight;
                 Find(preview.LayoutSettings, "remaining").Visible = false;
                 Find(preview.LayoutSettings, "updated").Visible = false;
                 reset.Checked = true;
@@ -115,13 +121,83 @@ namespace PersonalUsageOverlay
                 claude.Checked = true;
                 window.LoadPreferences();
                 checks["settings_binding_claude_toggle_updates_saved_choice_and_example"] = defaultOff && claude.Checked
-                    && host.Prefs.BadgeLayout.ShowClaude && preview.LayoutSettings.ShowClaude && preview.LayoutSettings.Height == 122
+                    && host.Prefs.BadgeLayout.ShowClaude && preview.LayoutSettings.ShowClaude
+                    && preview.LayoutSettings.Height == BadgeLayoutSettings.StackedCodexHeight + BadgeLayoutSettings.DetailedClaudeHeight
                     && preview.Presentation.Claude.Status.StartsWith("예시", StringComparison.Ordinal)
                     && Field<Label>(window, "claudeStatus").Text == "실제 Claude Code · 한도 수신 대기";
+                var intro = Field<Label>(window, "claudeIntro");
+                var status = Field<Label>(window, "claudeStatus");
+                var setupHint = Field<Label>(window, "claudeSetupHint");
+                string introText = intro.Text;
+                var now = host.StartedAt;
+                bool setupHintsMatch = setupHint.Text.Length == 0;
+                foreach (string reason in new[] { "missing-cli", "auth-required" })
+                {
+                    var snapshot = new ClaudeUsageSnapshot { status = reason, attemptedAt = now.ToString("o", CultureInfo.InvariantCulture) };
+                    ClaudeUsageDisplay actual = ClaudeUsageDisplay.FromAutomatic(snapshot, now, TimeZoneInfo.Utc);
+                    host.SetPresentation(UsagePresentation.Create(new UsageState { status = "loading" }, now, TimeZoneInfo.Utc, actual));
+                    window.UpdateUsage();
+                    setupHintsMatch &= status.Text == "실제 Claude Code · " + actual.Status
+                        && !String.IsNullOrEmpty(actual.SetupHint) && setupHint.Text == actual.SetupHint;
+                }
                 claude.Checked = false;
-                checks["settings_binding_claude_toggle_off_restores_compact_example"] = !host.Prefs.BadgeLayout.ShowClaude
-                    && !preview.LayoutSettings.ShowClaude && preview.LayoutSettings.Height == 58
-                    && Field<Label>(window, "claudeStatus").Text.Length == 0;
+                checks["settings_binding_claude_toggle_off_restores_codex_only_example"] = !host.Prefs.BadgeLayout.ShowClaude
+                    && !preview.LayoutSettings.ShowClaude && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight
+                    && status.Text.Length == 0;
+                checks["settings_binding_claude_onboarding_persists_and_only_enabled_lookup_shows_setup_hint"] =
+                    intro.Parent == claude.Parent && intro.Top >= claude.Bottom && intro.Bottom <= status.Top
+                    && status.Bottom <= setupHint.Top && intro.Text == introText
+                    && introText.Contains("CLI") && introText.Contains("15분") && setupHint.Text.Length == 0
+                    && setupHintsMatch && ReferenceEquals(preview.Presentation, cachedPreview);
+            }
+        }
+
+        private static void CheckFormatBindings(Dictionary<string, bool> checks)
+        {
+            var host = new SettingsPreviewHost(VisualTheme.Dark);
+            using (var window = new SettingsWindow(host, 1f))
+            {
+                var preview = Field<BadgePreview>(window, "preview");
+                var format = Field<ThemedComboBox>(window, "formatChoice");
+                var reset = Field<CheckBox>(window, "resetChoice");
+                var countdown = Field<CheckBox>(window, "countdownChoice");
+                var plan = Field<CheckBox>(window, "planChoice");
+                var claude = Field<CheckBox>(window, "claudeChoice");
+                var hint = Field<Label>(window, "formatHint");
+                UsagePresentation example = preview.Presentation;
+                checks["settings_badge_format_defaults_to_detailed_and_is_on_the_preview_page"] = format.SelectedIndex == 0
+                    && format.Items.Count == 2 && format.Items[0].ToString() == "상세형" && format.Items[1].ToString() == "간결형"
+                    && format.AccessibleName == "배지 형식" && format.Parent == preview.Parent
+                    && !preview.LayoutSettings.Compact && !host.Prefs.BadgeLayout.Compact;
+
+                countdown.Checked = false;
+                claude.Checked = true;
+                int detailedHeight = preview.LayoutSettings.Height;
+                format.SelectedIndex = 1;
+                var saved = host.Prefs.BadgeLayout;
+                window.LoadPreferences();
+                checks["settings_badge_format_selection_updates_saved_layout_and_example_without_resetting_choices"] = preview.LayoutSettings.Compact
+                    && saved.Compact && ReferenceEquals(saved, host.Prefs.BadgeLayout) && format.SelectedIndex == 1
+                    && preview.LayoutSettings.Height < detailedHeight && ReferenceEquals(example, preview.Presentation)
+                    && reset.Checked && !countdown.Checked && plan.Checked && claude.Checked
+                    && reset.Enabled && !countdown.Enabled && plan.Enabled && claude.Enabled
+                    && hint.Text == "디데이는 상세형에서 표시";
+
+                var json = new JavaScriptSerializer();
+                var roundTrip = json.Deserialize<BadgeLayoutSettings>(json.Serialize(saved));
+                roundTrip.Normalize();
+                checks["settings_badge_format_round_trip_preserves_compact_and_hidden_detailed_choices"] = roundTrip.Compact
+                    && roundTrip.ShowPlan && roundTrip.ShowClaude && Find(roundTrip, "weekly-reset").Visible && !Find(roundTrip, "countdown").Visible;
+                reset.Checked = false;
+                checks["settings_compact_reset_choice_updates_preview_and_preferences"] = preview.LayoutSettings.Compact
+                    && !Find(preview.LayoutSettings, "weekly-reset").Visible && !Find(host.Prefs.BadgeLayout, "weekly-reset").Visible
+                    && preview.LayoutSettings.ShowClaude && ReferenceEquals(example, preview.Presentation);
+                reset.Checked = true;
+                format.SelectedIndex = 0;
+                checks["settings_badge_format_returning_to_detailed_restores_original_display_options"] = !preview.LayoutSettings.Compact
+                    && !host.Prefs.BadgeLayout.Compact && preview.LayoutSettings.Height == detailedHeight
+                    && reset.Checked && !countdown.Checked && plan.Checked && claude.Checked
+                    && reset.Enabled && countdown.Enabled && plan.Enabled && hint.Text.Length == 0;
             }
         }
 
@@ -182,7 +258,7 @@ namespace PersonalUsageOverlay
                 checks["settings_background_transparency_slider_updates_independent_preview_and_preferences"] = transparency.Value == 5
                     && preview.LayoutSettings.BackgroundTransparency == 50 && host.Prefs.BadgeLayout.BackgroundTransparency == 50
                     && !Object.ReferenceEquals(preview.LayoutSettings, host.Prefs.BadgeLayout) && transparencyLabel.Text.Contains("50")
-                    && OptionsMatch(preview, host, false, false) && preview.LayoutSettings.Height == 58
+                    && OptionsMatch(preview, host, false, false) && preview.LayoutSettings.Height == BadgeLayoutSettings.DetailedHeight
                     && PreviewUnchanged(preview, cachedPreview, cachedText, previewLabel, cachedLabel);
 
                 transparency.Value = 0;
@@ -245,6 +321,26 @@ namespace PersonalUsageOverlay
             checks["settings_tab_navigation_keeps_saved_options_and_cached_example_without_showing"] = !window.Visible
                 && Object.ReferenceEquals(savedLayout, host.Prefs.BadgeLayout) && preferences == json.Serialize(host.Prefs)
                 && PreviewUnchanged(preview, example, text, label, caption);
+
+            Label codexOptions = null, claudeOptions = null;
+            foreach (Control control in pages[0].Controls)
+            {
+                if (control.Text == "Codex 표시 옵션") codexOptions = control as Label;
+                if (control.Text == "Claude Code") claudeOptions = control as Label;
+            }
+            var claude = Field<ThemedCheckBox>(window, "claudeChoice");
+            var claudeStatus = Field<Label>(window, "claudeStatus");
+            bool codexBeforeClaude = codexOptions != null && claudeOptions != null;
+            foreach (var name in new[] { "resetChoice", "planChoice", "countdownChoice" })
+            {
+                var choice = Field<ThemedCheckBox>(window, name);
+                codexBeforeClaude = codexBeforeClaude && choice.Parent == pages[0]
+                    && choice.Top >= codexOptions.Bottom && choice.Bottom < claudeOptions.Top;
+            }
+            checks["settings_overlay_groups_codex_options_and_claude_toggle_with_its_status"] = codexBeforeClaude
+                && claude.Parent == pages[0] && claude.Top >= claudeOptions.Bottom
+                && claude.AccessibleName == "Claude Code 한도 표시" && claude.Text == "한도 표시"
+                && claudeStatus.Parent == pages[0] && claudeStatus.Left == claude.Left && claudeStatus.Top >= claude.Bottom;
         }
 
         private static void CheckJsonRoundTrip(Dictionary<string, bool> checks)
@@ -272,16 +368,21 @@ namespace PersonalUsageOverlay
                 && restored.ThemeMode == "light" && restored.SidebarX == 111 && restored.SidebarY == 98 && restored.SidebarBottomGap == 52
                 && restored.TitleOffsetX == -15 && restored.TitleGap == 12;
             BadgeElement fixedRemaining = Find(restored.BadgeLayout, "remaining"), fixedUpdated = Find(restored.BadgeLayout, "updated");
-            checks["settings_json_old_drag_geometry_and_style_migrate_to_fixed_layout"] = restored.BadgeLayout.Width == 320 && restored.BadgeLayout.Height == 82
+            checks["settings_json_old_drag_geometry_and_style_migrate_to_fixed_layout"] = restored.BadgeLayout.Width == BadgeLayoutSettings.DetailedWidth
+                && restored.BadgeLayout.Height == BadgeLayoutSettings.DetailedHeight && !restored.BadgeLayout.Compact
                 && restored.BadgeLayout.BackgroundTransparency == 50
-                && fixedRemaining.X == 10 && fixedRemaining.Y == 6 && fixedRemaining.Width == 300 && fixedRemaining.FontSize == 14f && fixedRemaining.Bold
-                && fixedUpdated.X == 10 && fixedUpdated.Y == 31 && fixedUpdated.Width == 300 && fixedUpdated.FontSize == 11f && !fixedUpdated.Bold;
+                && fixedRemaining.X == BadgeLayoutSettings.DetailedPadding && fixedRemaining.Y == 44
+                && fixedRemaining.Width == 292 && fixedRemaining.FontSize == 14f && fixedRemaining.Bold
+                && BadgeLayoutSettings.ElementHeight(fixedRemaining) == 27
+                && fixedUpdated.X == BadgeLayoutSettings.DetailedPadding && fixedUpdated.Y == 24
+                && fixedUpdated.Width == 292 && fixedUpdated.FontSize == 11f && !fixedUpdated.Bold;
             checks["settings_json_only_date_countdown_choices_migrate_and_legacy_icon_is_removed"] = !restored.BadgeLayout.Elements.Exists(element => element.Key == "indicator")
                 && Find(restored.BadgeLayout, "weekly-reset").Visible && !Find(restored.BadgeLayout, "countdown").Visible && RequiredVisible(restored.BadgeLayout);
-            checks["settings_json_prior_bottom_row_countdown_uses_inline_reserved_column"] = Find(restored.BadgeLayout, "countdown").X == 232
-                && Find(restored.BadgeLayout, "countdown").Y == 6 && Find(restored.BadgeLayout, "countdown").Width == 78
-                && BadgeLayoutSettings.ElementHeight(Find(restored.BadgeLayout, "countdown")) == 25
-                && Find(restored.BadgeLayout, "weekly-reset").Width == 300;
+            var fixedCountdown = Find(restored.BadgeLayout, "countdown");
+            var fixedReset = Find(restored.BadgeLayout, "weekly-reset");
+            checks["settings_json_prior_reset_and_countdown_positions_normalize_to_the_quota_row"] =
+                BadgeRenderer.ElementBounds(fixedCountdown) == BadgeRenderer.ElementBounds(fixedRemaining)
+                && BadgeRenderer.ElementBounds(fixedReset) == BadgeRenderer.ElementBounds(fixedRemaining);
             checks["settings_json_old_z_order_migrates_to_fixed_order"] = restored.BadgeLayout.Elements.Count == 4
                 && restored.BadgeLayout.Elements[0].Key == "remaining" && restored.BadgeLayout.Elements[1].Key == "updated"
                 && restored.BadgeLayout.Elements[2].Key == "weekly-reset" && restored.BadgeLayout.Elements[3].Key == "countdown";
@@ -386,7 +487,7 @@ namespace PersonalUsageOverlay
         {
             return layout.Elements.Count == 4 && !layout.Elements.Exists(element => element.Key == "indicator")
                 && Find(layout, "weekly-reset").Visible == reset && Find(layout, "countdown").Visible == countdown
-                && Find(layout, "remaining").X == 10;
+                    && Find(layout, "remaining").X == layout.ContentPadding;
         }
 
         private static bool RequiredVisible(BadgeLayoutSettings layout)
@@ -396,7 +497,8 @@ namespace PersonalUsageOverlay
 
         private static bool LayoutsEqual(BadgeLayoutSettings first, BadgeLayoutSettings second)
         {
-            if (first.Width != second.Width || first.Height != second.Height || first.BackgroundTransparency != second.BackgroundTransparency
+            if (first.Width != second.Width || first.Height != second.Height || first.Compact != second.Compact
+                || first.BackgroundTransparency != second.BackgroundTransparency || first.ShowPlan != second.ShowPlan || first.ShowClaude != second.ShowClaude
                 || first.Elements.Count != second.Elements.Count)
                 return false;
             for (int i = 0; i < first.Elements.Count; i++)

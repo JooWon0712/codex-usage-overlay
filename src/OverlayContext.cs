@@ -27,6 +27,8 @@ namespace PersonalUsageOverlay
             Text = "Usage Overlay Dispatcher"
         };
         private readonly Badge badge = new Badge();
+        private readonly BadgeFormatButton formatButton = new BadgeFormatButton();
+        private readonly ServiceIcons serviceIcons;
         private readonly TitleAnchorTracker titleTracker = new TitleAnchorTracker();
         private readonly ThemeTracker themeTracker = new ThemeTracker();
         public VisualTheme Theme { get; private set; }
@@ -40,7 +42,8 @@ namespace PersonalUsageOverlay
         private SettingsWindow settings;
         private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         private readonly UsageLookupHistory lookupHistory = new UsageLookupHistory();
-        private readonly ClaudeUsageReader claudeUsage = new ClaudeUsageReader(AppIdentity.ClaudeUsageFile);
+        private readonly ClaudeUsageReader claudeUsage = new ClaudeUsageReader(AppIdentity.ClaudeUsageFile, AppIdentity.ClaudeAutomaticUsageFile);
+        private readonly ClaudeAutoRefresh claudeRefresh;
         private Process worker;
         private string workerCodexPath;
         private bool workerPathRefreshPending, refreshAfterWorkerExit, workerHasReportedState;
@@ -105,6 +108,8 @@ namespace PersonalUsageOverlay
             StartedAt = startedAt;
             diagnostics = diagnosticPath;
             eventCallback = OnNativeEvent;
+            claudeRefresh = new ClaudeAutoRefresh(Path.Combine(folder, "claude-usage-probe.mjs"),
+                AppIdentity.ClaudeRefreshRequestFile, () => LoadRuntime().Node);
             try
             {
                 dispatcher.CreateControl();
@@ -126,8 +131,11 @@ namespace PersonalUsageOverlay
                 Presentation = UsagePresentation.Create(state, DateTimeOffset.UtcNow);
                 badge.Presentation = Presentation;
                 badge.LayoutSettings = Prefs.BadgeLayout;
+                serviceIcons = ServiceIcons.Load();
+                badge.Icons = serviceIcons;
+                formatButton.ToggleRequested += ToggleBadgeFormat;
                 UpdateTheme();
-                settings = new SettingsWindow(this);
+                settings = new SettingsWindow(this, null, serviceIcons);
                 // The taskbar window owns the application's lifetime. Minimizing does not close it.
                 MainForm = settings;
                 workerJob = Native.CreateJobObject(IntPtr.Zero, null);
@@ -311,11 +319,12 @@ namespace PersonalUsageOverlay
                 Send(new { command = "active", value = active });
             }
 
+            claudeRefresh.Tick(DateTime.UtcNow, Prefs.BadgeLayout.ShowClaude);
             UpdatePresentation();
             if (show)
                 UpdateBadge();
             else
-                badge.Hide();
+                HideBadge();
             if (worker == null && DateTime.UtcNow >= workerRestartAfter)
             {
                 StartWorker();
@@ -332,7 +341,7 @@ namespace PersonalUsageOverlay
             var origin = new Native.POINT();
             if (!Native.GetClientRect(target, out client) || !Native.ClientToScreen(target, ref origin))
             {
-                badge.Hide();
+                HideBadge();
                 return;
             }
 
@@ -340,16 +349,17 @@ namespace PersonalUsageOverlay
             var rect = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
             titleAnchor = Prefs.Position == "sidebar" ? null : titleTracker.GetOrRequest(target, rect, scale);
             anchorStatus = titleAnchor == null ? "sidebar" : titleAnchor.Status;
-            var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor);
+            float badgeScale;
+            var bounds = OverlayLayout.CalculateBounds(rect, scale, Prefs, titleAnchor, out badgeScale);
             if (bounds.Width < 80 || bounds.Height < 25)
             {
                 if (anchorStatus == "ok" || anchorStatus == "sidebar") anchorStatus = "no_space";
-                badge.Hide();
+                HideBadge();
                 return;
             }
 
-            bool changed = lastBounds != bounds || Math.Abs(badge.ScaleFactor - scale) > 0.01;
-            badge.ScaleFactor = scale;
+            bool changed = lastBounds != bounds || Math.Abs(badge.ScaleFactor - badgeScale) > 0.01;
+            badge.ScaleFactor = badgeScale;
             if (changed)
             {
                 badge.Bounds = bounds;
@@ -363,10 +373,50 @@ namespace PersonalUsageOverlay
                 if (prepared && !badge.Visible) badge.Show();
                 bool placed = prepared && (settingsOverlayActive ? BadgeZOrder.Place(badge.Handle, target, bounds)
                     : Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40));
-                if (!placed || !badge.Present()) badge.Hide();
+                if (!placed || !badge.Present()) { HideBadge(); return; }
                 badgeWasSettingsOverlay = settingsOverlayActive;
             }
-            catch { badge.Hide(); }
+            catch { HideBadge(); return; }
+            UpdateBadgeFormatButton(bounds, badgeScale);
+        }
+
+        private void HideBadge()
+        {
+            formatButton.Hide();
+            badge.Hide();
+        }
+
+        private void UpdateBadgeFormatButton(Rectangle bounds, float scale)
+        {
+            Rectangle buttonBounds = BadgeFormatButton.CalculateBounds(bounds, Prefs.BadgeLayout, scale);
+            if (buttonBounds.IsEmpty)
+            {
+                formatButton.Hide();
+                return;
+            }
+
+            try
+            {
+                formatButton.SetAppearance(Theme, Prefs.BadgeLayout.Compact);
+                if (formatButton.Bounds != buttonBounds) formatButton.Bounds = buttonBounds;
+                if (!formatButton.Present(scale)) { formatButton.Hide(); return; }
+                if (!formatButton.Visible) formatButton.Show();
+                if (Native.GetWindow(badge.Handle, 3) != formatButton.Handle &&
+                    !BadgeZOrder.Place(formatButton.Handle, badge.Handle, buttonBounds)) formatButton.Hide();
+            }
+            catch { formatButton.Hide(); }
+        }
+
+        private void ToggleBadgeFormat(object sender, EventArgs e)
+        {
+            if (quitting || !formatButton.Visible) return;
+            IntPtr foreground = Native.GetForegroundWindow();
+            bool settingsForeground = settingsOverlayActive && settings.IsHandleCreated && foreground == settings.Handle;
+            if (!settingsForeground && foreground != target && Native.GetAncestor(foreground, 3) != target) return;
+            var layout = Prefs.BadgeLayout.Copy();
+            layout.Compact = !layout.Compact;
+            SetBadgeLayout(layout);
+            settings.LoadPreferences();
         }
 
         private void UpdatePresentation()
@@ -800,7 +850,8 @@ namespace PersonalUsageOverlay
             // MainForm is disposed here, after the close event/message loop has unwound.
             finally
             {
-                base.Dispose(disposing);
+                try { base.Dispose(disposing); }
+                finally { if (disposing && serviceIcons != null) TryCleanup(serviceIcons.Dispose); }
             }
         }
 
@@ -827,10 +878,8 @@ namespace PersonalUsageOverlay
             });
             TryCleanup(titleTracker.Dispose);
             TryCleanup(themeTracker.Dispose);
-            TryCleanup(delegate
-            {
-                badge.Hide();
-            });
+            TryCleanup(claudeRefresh.Dispose);
+            TryCleanup(HideBadge);
             if (openSettingsWait != null)
                 TryCleanup(delegate
                 {
@@ -874,6 +923,7 @@ namespace PersonalUsageOverlay
                 workerJob = IntPtr.Zero;
             }
 
+            TryCleanup(formatButton.Dispose);
             TryCleanup(badge.Dispose);
             TryCleanup(dispatcher.Dispose);
             TryCleanup(timer.Dispose);

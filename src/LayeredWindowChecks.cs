@@ -14,7 +14,12 @@ namespace PersonalUsageOverlay
         public static void Run(Dictionary<string,bool> checks)
         {
             // A test-only badge on no monitor, with no context, worker or user data.
-            using(var badge=new Badge {Location=new Point(-32000,-32000),ClientSize=new Size(320,82),Presentation=SettingsPreviewHost.CreateSample(96,"ok")})
+            using(var badge=new Badge
+            {
+                Location=new Point(-32000,-32000),
+                ClientSize=new Size(BadgeLayoutSettings.DetailedWidth, BadgeLayoutSettings.DetailedHeight),
+                Presentation=SettingsPreviewHost.CreateSample(96,"ok")
+            })
             {
                 bool prepared=badge.Present(0);
                 int firstError=LayeredBitmapPresenter.LastError;
@@ -34,8 +39,10 @@ namespace PersonalUsageOverlay
                 checks["layered_badge_repaints_background_changes_without_global_opacity"] = updates;
                 badge.Theme=VisualTheme.Light;
                 bool themed=badge.Present();
-                var compact=badge.LayoutSettings.Copy(); compact.Elements.Find(item=>item.Key=="weekly-reset").Visible=false; compact.Normalize();
-                badge.LayoutSettings=compact; badge.ScaleFactor=1.5f; badge.ClientSize=new Size(480,87);
+                var compact=badge.LayoutSettings.Copy();
+                compact.Compact=true; compact.Normalize();
+                badge.LayoutSettings=compact; badge.ScaleFactor=1.5f;
+                badge.ClientSize=new Size((int)Math.Round(compact.Width * badge.ScaleFactor), (int)Math.Round(compact.Height * badge.ScaleFactor));
                 checks["layered_badge_repaints_theme_dpi_and_compact_size"] = themed && badge.Present();
                 badge.Hide();
                 bool masked=badge.Present(0); if(masked) badge.Show();

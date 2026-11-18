@@ -150,21 +150,22 @@ namespace PersonalUsageOverlay
                                     BadgeTextColors profile = BadgeTextColors.Resolve(theme, percent, highContrast);
                                     using (Bitmap glyphBitmap = BadgeRenderer.CreateGlyphBitmap(size, scale, theme, presentation, layout))
                                     using (Bitmap textBitmap = BadgeRenderer.CreateTextBitmap(size, scale, theme, presentation, layout))
+                                    using (Bitmap surfaceBitmap = BadgeRenderer.CreateSurfaceBitmap(size, scale, theme, presentation, layout))
                                     using (Bitmap fullBitmap = BadgeRenderer.CreateBitmap(size, scale, theme, presentation, layout))
                                     {
-                                        RawBitmap glyph = ReadPixels(glyphBitmap), text = ReadPixels(textBitmap), full = ReadPixels(fullBitmap);
+                                        RawBitmap glyph = ReadPixels(glyphBitmap), text = ReadPixels(textBitmap),
+                                            surface = ReadPixels(surfaceBitmap), full = ReadPixels(fullBitmap);
                                         formats &= glyphBitmap.Size == size && textBitmap.Size == size && fullBitmap.Size == size
+                                            && surfaceBitmap.Size == size && surfaceBitmap.PixelFormat == PixelFormat.Format32bppPArgb
                                             && glyphBitmap.PixelFormat == PixelFormat.Format32bppPArgb
                                             && textBitmap.PixelFormat == PixelFormat.Format32bppPArgb
                                             && fullBitmap.PixelFormat == PixelFormat.Format32bppPArgb
-                                            && glyph.IsPremultiplied() && text.IsPremultiplied() && full.IsPremultiplied();
+                                            && glyph.IsPremultiplied() && text.IsPremultiplied() && surface.IsPremultiplied() && full.IsPremultiplied();
                                         Point background = BackgroundPoint(size, scale);
-                                        byte[] sample = full.Pixel(background);
                                         int expectedAlpha = BadgeRenderer.BackgroundAlpha(percent, highContrast);
-                                        backgrounds &= text.Channel(background, 3) == 0 && Math.Abs(sample[3] - expectedAlpha) <= 1
+                                        backgrounds &= text.Channel(background, 3) == 0 && Math.Abs(full.Channel(background, 3) - expectedAlpha) <= 1
                                             && BackgroundChannelsMatch(full, background, theme.Surface, expectedAlpha);
                                         int lowCoverage = 0, highCoverage = 0, partialOutline = 0;
-                                        int inset = (int)Math.Ceiling(12 * scale);
                                         for (int offset = 0; offset < glyph.Data.Length; offset += 4)
                                         {
                                             int alpha = glyph.Data[offset + 3], textAlpha = text.Data[offset + 3];
@@ -183,15 +184,11 @@ namespace PersonalUsageOverlay
                                                 : alpha > 0;
                                             if (!allowed)
                                                 for (int channel = 0; channel < 4; channel++) bounds &= text.Data[offset + channel] == 0;
-                                            if (textAlpha > 0) composited &= SourceOverMatches(text.Data, full.Data, offset, sample);
+                                            if (textAlpha > 0)
+                                                composited &= SourceOverMatches(text.Data, full.Data, offset, surface.Data, offset);
                                             else
-                                            {
-                                                int pixel = offset / 4, x = pixel % size.Width, y = pixel / size.Width;
-                                                if (x >= inset && x < size.Width - inset && y >= inset && y < size.Height - inset)
-                                                    backgrounds &= Math.Abs(full.Data[offset + 3] - expectedAlpha) <= 1;
-                                                if (expectedAlpha == 0)
-                                                    for (int channel = 0; channel < 4; channel++) backgrounds &= full.Data[offset + channel] == 0;
-                                            }
+                                                for (int channel = 0; channel < 4; channel++)
+                                                    backgrounds &= full.Data[offset + channel] == surface.Data[offset + channel];
                                             if (theme.IsDark)
                                                 for (int channel = 0; channel < 4; channel++)
                                                     darkInvariant &= glyph.Data[offset + channel] == referenceGlyph.Data[offset + channel]
@@ -209,7 +206,7 @@ namespace PersonalUsageOverlay
             checks["badge_transparency_original_low_and_high_aa_coverage_is_never_deleted"] = coverage;
             checks["badge_transparency_glyph_contribution_and_opaque_centers_match_each_resolved_profile"] = colors;
             checks["badge_transparency_enabled_outline_or_soft_shadow_keeps_partial_alpha"] = outline;
-            checks["badge_transparency_no_fixed_row_backing_or_pixels_outside_glyph_and_profile_underlay"] = bounds;
+            checks["badge_transparency_text_layer_has_no_background_outside_glyph_and_profile_underlay"] = bounds;
             checks["badge_transparency_full_bitmap_uses_source_over_for_every_glyph_and_outline_pixel"] = composited;
             checks["badge_transparency_all_states_preserve_background_alpha_outside_text_mask"] = backgrounds;
             checks["badge_transparency_all_glyphs_composite_correctly_on_black_white_and_colored_backdrops"] = backdrops;
@@ -291,27 +288,35 @@ namespace PersonalUsageOverlay
         private static bool OpaqueCentersMatch(Bitmap bitmap, RawBitmap glyph, RawBitmap text, float scale,
             UsagePresentation presentation, BadgeLayoutSettings layout, BadgeTextColors profile)
         {
-            BadgeRenderer.HeadlinePlacement headline;
+            BadgeRenderer.SessionRowPlacement rows;
             using (Graphics graphics = Graphics.FromImage(bitmap))
-                headline = BadgeRenderer.CalculateHeadline(graphics, new Rectangle(Point.Empty, bitmap.Size), scale, presentation, layout);
+                rows = BadgeRenderer.CalculateCodexSessionRow(graphics, DetailedQuotaBounds(layout, scale), scale, presentation, layout);
             foreach (BadgeElement element in layout.Elements)
             {
                 if (!element.Visible) continue;
                 Color color = element.Key == "remaining" ? (presentation.LowWeeklyRemaining.HasValue ? profile.DangerText : profile.Text)
-                    : element.Key == "countdown" ? (presentation.LowWeeklyRemaining.HasValue ? profile.DangerText : profile.Accent)
+                    : element.Key == "countdown" ? (presentation.LowWeeklyRemaining.HasValue ? profile.DangerText : profile.Text)
                     : element.Key == "weekly-reset" ? profile.Muted
                     : presentation.Tone == UsageTone.Low ? profile.Danger
                     : presentation.Tone == UsageTone.Normal ? profile.Success : profile.Attention;
                 Rectangle region = Rectangle.Round(new RectangleF(element.X * scale, element.Y * scale,
                     element.Width * scale, BadgeLayoutSettings.ElementHeight(element) * scale));
-                if (element.Key == "remaining") region = headline.Main;
-                if (element.Key == "countdown") region = headline.Countdown;
+                if (element.Key == "remaining") region = rows.Value;
+                if (element.Key == "weekly-reset") region = rows.Reset;
+                if (element.Key == "countdown") region = rows.Countdown;
+                if (region.IsEmpty && (element.Key == "countdown" || element.Key == "weekly-reset")) continue;
                 Point center = glyph.FindOpaqueText(region, color);
                 if (center.X < 0) return false;
                 for (int channel = 0; channel < 4; channel++)
                     if (glyph.Channel(center, channel) != text.Channel(center, channel)) return false;
             }
             return true;
+        }
+
+        private static Rectangle DetailedQuotaBounds(BadgeLayoutSettings layout, float scale)
+        {
+            RectangleF row = BadgeRenderer.ElementBounds(layout.Elements.Find(element => element.Key == "remaining"));
+            return Rectangle.Round(new RectangleF(row.X * scale, row.Y * scale, row.Width * scale, row.Height * scale));
         }
 
         private static void CheckOptions(Dictionary<string, bool> checks, DateTimeOffset started,
@@ -334,7 +339,7 @@ namespace PersonalUsageOverlay
                                 layout.Elements.Find(element => element.Key == "weekly-reset").Visible = date;
                                 layout.Elements.Find(element => element.Key == "countdown").Visible = countdown;
                                 layout.Normalize();
-                                options &= layout.Height == (date ? 82 : 58)
+                                options &= layout.Height == 78 && layout.ShowCodexReset == date && layout.ShowCountdown == countdown
                                     && layout.Elements.Find(element => element.Key == "remaining").Visible
                                     && layout.Elements.Find(element => element.Key == "updated").Visible;
                                 var size = new Size((int)Math.Round(320 * scale), (int)Math.Round(layout.Height * scale));
@@ -347,17 +352,18 @@ namespace PersonalUsageOverlay
                                     using (Graphics graphics = Graphics.FromImage(glyphBitmap))
                                     using (var font = new Font("Segoe UI", 14 * scale, FontStyle.Bold, GraphicsUnit.Pixel))
                                     {
-                                        BadgeRenderer.HeadlinePlacement headline = BadgeRenderer.CalculateHeadline(graphics,
-                                            new Rectangle(Point.Empty, size), scale, presentation, layout);
+                                        Rectangle quotaBounds = DetailedQuotaBounds(layout, scale);
+                                        BadgeRenderer.SessionRowPlacement rows = BadgeRenderer.CalculateCodexSessionRow(graphics,
+                                            quotaBounds, scale, presentation, layout);
                                         if (presentation == longFailure)
-                                            clipping &= BadgeRenderer.MeasureTextWidth(graphics, presentation.MainText, font) > headline.Main.Width;
-                                        Rectangle ink = glyph.InkBounds(new Rectangle(0, 0, size.Width, (int)Math.Round(31 * scale)));
-                                        clipping &= !ink.IsEmpty && ink.Left >= (int)Math.Round(10 * scale)
-                                            && ink.Right <= (int)Math.Round(310 * scale);
+                                            clipping &= BadgeRenderer.MeasureTextWidth(graphics, presentation.MainText, font) > rows.Value.Width;
+                                        Rectangle ink = glyph.InkBounds(new Rectangle(0, quotaBounds.Top, size.Width, quotaBounds.Height));
+                                        clipping &= !ink.IsEmpty && ink.Left >= (int)Math.Round(14 * scale)
+                                            && ink.Right <= (int)Math.Round(306 * scale);
                                     }
                                 }
                             }
-            checks["badge_transparency_all_four_date_countdown_options_keep_fixed_or_compact_height"] = options;
+            checks["badge_transparency_all_four_date_countdown_options_keep_fixed_detailed_height"] = options;
             checks["badge_transparency_long_failure_and_unknown_reset_keep_resolved_opaque_centers"] = glyphs;
             checks["badge_transparency_long_failure_uses_ellipsis_allocation_without_header_overflow"] = clipping
                 && longFailure.HasQueryFailure && longFailure.ResetDateText.IndexOf("확인 불가", StringComparison.Ordinal) >= 0;
@@ -385,8 +391,9 @@ namespace PersonalUsageOverlay
                             && raw.Channel(new Point(0, size.Height - 1), 3) == 0
                             && raw.Channel(new Point(size.Width - 1, size.Height - 1), 3) == 0;
                         BadgeTextColors colors = BadgeTextColors.Resolve(theme, percent, highContrast);
-                        var heading = new Rectangle((int)Math.Round(10 * scale), (int)Math.Round(6 * scale),
-                            (int)Math.Round(300 * scale), (int)Math.Round(25 * scale));
+                        var quotaElement = layout.Elements.Find(element => element.Key == "remaining");
+                        var heading = Rectangle.Round(new RectangleF(quotaElement.X * scale, quotaElement.Y * scale,
+                            (layout.Width - quotaElement.X * 2) * scale, BadgeLayoutSettings.ElementHeight(quotaElement) * scale));
                         Point solidText = raw.FindOpaqueText(heading, colors.Text);
                         text &= solidText.X >= 0;
                         premultiplied &= raw.IsPremultiplied() && BackgroundChannelsMatch(raw, background, theme.Surface, expected);
@@ -395,7 +402,7 @@ namespace PersonalUsageOverlay
                     }
                 }
             string prefix = "badge_transparency_" + (theme.IsDark ? "dark_" : "light_") + (int)(scale * 100) + "_";
-            checks[prefix + "both_heights_use_32bit_premultiplied_bitmaps"] = format;
+            checks[prefix + "both_date_settings_use_32bit_premultiplied_bitmaps"] = format;
             checks[prefix + "background_alpha_tracks_all_eleven_percent_values"] = backgrounds;
             checks[prefix + "rounded_outer_corners_are_fully_transparent"] = corners;
             checks[prefix + "heading_keeps_resolved_opaque_glyph_pixels_even_without_background"] = text;
@@ -425,7 +432,7 @@ namespace PersonalUsageOverlay
             return true;
         }
         private static Point BackgroundPoint(Size size, float scale)
-        { return new Point(size.Width / 2, size.Height - (int)Math.Ceiling(4 * scale)); }
+        { return new Point((int)Math.Ceiling(5 * scale), Math.Min(size.Height - 1, (int)Math.Round(35 * scale))); }
         private static bool BackgroundChannelsMatch(RawBitmap raw, Point point, Color surface, int alpha)
         {
             return Math.Abs(raw.Channel(point, 0) - (surface.B * alpha + 127) / 255) <= 1
@@ -440,11 +447,11 @@ namespace PersonalUsageOverlay
                 && Math.Abs(text[offset + 1] - glyph[offset + 1] - (outline.G * addedAlpha + 127) / 255) <= 1
                 && Math.Abs(text[offset + 2] - glyph[offset + 2] - (outline.R * addedAlpha + 127) / 255) <= 1;
         }
-        private static bool SourceOverMatches(byte[] source, byte[] actual, int offset, byte[] background)
+        private static bool SourceOverMatches(byte[] source, byte[] actual, int offset, byte[] background, int backgroundOffset = 0)
         {
             int inverse = 255 - source[offset + 3];
             for (int channel = 0; channel < 4; channel++)
-                if (Math.Abs(actual[offset + channel] - source[offset + channel] - (background[channel] * inverse + 127) / 255) > 2) return false;
+                if (Math.Abs(actual[offset + channel] - source[offset + channel] - (background[backgroundOffset + channel] * inverse + 127) / 255) > 2) return false;
             return true;
         }
         private static bool[] UnderlayBounds(RawBitmap glyph, Size size, float scale, bool softShadow)

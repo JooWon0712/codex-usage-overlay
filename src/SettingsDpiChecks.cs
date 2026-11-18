@@ -18,6 +18,7 @@ namespace PersonalUsageOverlay
             IntPtr foreground = Native.GetForegroundWindow();
             var observations = new List<object>();
             var host = new DpiPreviewHost();
+            host.Prefs.BadgeLayout.Compact = true;
             IntPtr handle = IntPtr.Zero;
             bool noActivation = true, sameHandle = true, preferences = true, example = true;
             int maxBoundsDrift = 0;
@@ -45,11 +46,12 @@ namespace PersonalUsageOverlay
                 var preview = Field<BadgePreview>(window, "preview");
                 UsagePresentation cached = preview.Presentation;
                 string cachedText = PreviewText(cached);
+                var format = Field<ThemedComboBox>(window, "formatChoice");
                 var position = Field<ThemedComboBox>(window, "positionChoice");
                 var theme = Field<ThemedComboBox>(window, "themeChoice");
                 var x = Field<ThemedNumericUpDown>(window, "x");
                 var y = Field<ThemedNumericUpDown>(window, "y");
-                int selectedPosition = position.SelectedIndex, selectedTheme = theme.SelectedIndex;
+                int selectedFormat = format.SelectedIndex, selectedPosition = position.SelectedIndex, selectedTheme = theme.SelectedIndex;
                 decimal left = x.Value, vertical = y.Value;
                 int previousDpi = 96;
                 foreach (int dpi in new[] { 96, 144, 192, 96 })
@@ -64,23 +66,32 @@ namespace PersonalUsageOverlay
                     var firstFrame = x.Parent as ThemedNumberField;
                     var secondFrame = y.Parent as ThemedNumberField;
                     bool viewport = content != null
-                        && content.Bounds == new Rectangle(0, window.CaptionHeight, (int)Math.Round(600 * scale), (int)Math.Round(630 * scale))
+                        && content.Bounds == new Rectangle(0, window.CaptionHeight, (int)Math.Round(608 * scale), (int)Math.Round(782 * scale))
                         && window.ClientSize == new Size(content.Width, content.Height + window.CaptionHeight)
                         && window.CaptionHeight == (window.HasCustomCaption ? (int)Math.Round(44 * scale) : 0);
                     checks["settings_dpi_viewport_and_caption_match_message_scale" + suffix] = viewport;
                     checks["settings_dpi_main_content_and_preview_coordinates_are_scaled_once" + suffix] =
-                        page.Bounds == Scaled(20, 130, 560, 428, scale)
-                        && preview.Bounds == Scaled(16, 32, 520, 178, scale)
+                        page.Bounds == Scaled(28, 130, 552, 578, scale)
+                        && preview.Bounds == Scaled(16, 40, 512, 220, scale)
                         && Near(Field<float>(window, "uiScale"), scale)
                         && Near(Field<float>(window, "layoutScale"), scale) && Near(preview.UiScale, scale);
+                    var claudeIntro = Field<Label>(window, "claudeIntro");
+                    checks["settings_dpi_claude_onboarding_fits_at_message_scale" + suffix] =
+                        claudeIntro.Bounds == Scaled(16, 465, 512, 34, scale) && Near(claudeIntro.Font.Size, 11 * scale)
+                        && claudeIntro.PreferredWidth <= claudeIntro.Width && claudeIntro.PreferredHeight <= claudeIntro.Height
+                        && Field<Label>(window, "claudeSetupHint").Bottom <= page.Height;
                     checks["settings_dpi_native_choices_keep_selection_font_item_height_and_scale" + suffix] =
-                        ChoiceFits(position, 24, 52, 400, scale) && ChoiceFits(theme, 24, 294, 400, scale)
+                        ChoiceFits(format, 369, 4, 159, scale) && format.Bottom <= preview.Top && format.Right == preview.Right
+                        && ChoiceFits(position, 24, 52, 400, scale) && ChoiceFits(theme, 24, 294, 400, scale)
+                        && selectedFormat == 1 && format.SelectedIndex == selectedFormat
                         && position.SelectedIndex == selectedPosition && theme.SelectedIndex == selectedTheme;
                     checks["settings_dpi_number_frames_fonts_and_native_children_are_scaled_once" + suffix] =
                         FrameFits(x, firstFrame, 24, 158, 180, scale) && FrameFits(y, secondFrame, 240, 158, 184, scale)
                         && x.Value == left && y.Value == vertical;
                     checks["settings_dpi_buttons_checks_and_slider_use_new_scale" + suffix] =
                         OtherInputsFit(window, scale);
+                    checks["settings_dpi_header_tabs_and_footer_keep_matching_outer_margins" + suffix] =
+                        OuterMarginsFit(window, content, page, scale);
                     sameHandle &= window.Handle == handle && !window.IsDisposed;
                     noActivation &= Native.GetForegroundWindow() == foreground && !window.ShowInTaskbar;
                     preferences &= saved == Json(host.Prefs)
@@ -115,6 +126,12 @@ namespace PersonalUsageOverlay
                 checks["settings_dpi_round_trip_keeps_same_hwnd_and_does_not_activate_or_create_taskbar_entry"] = sameHandle && noActivation;
                 checks["settings_dpi_messages_do_not_save_preferences_query_or_activate_target"] = preferences;
                 checks["settings_dpi_messages_preserve_cached_launch_time_example"] = example;
+                window.FitWorkArea(new Size(480, 520));
+                Settle(window);
+                var compactContent = Content(window);
+                checks["settings_smaller_work_area_scrolls_full_canvas_including_outer_margins"] =
+                    compactContent.Width == 432 && compactContent.Height == 456 - window.CaptionHeight
+                    && compactContent.AutoScroll && compactContent.AutoScrollMinSize == new Size(608, 782);
                 window.Close();
             }
             checks["settings_dpi_fixture_releases_its_own_window_after_round_trip"] = handle != IntPtr.Zero && !Native.IsWindow(handle)
@@ -182,7 +199,7 @@ namespace PersonalUsageOverlay
             var buttons = Field<ThemedButton[]>(window, "pageButtons");
             bool result = buttons.Length == 2;
             for (int index = 0; index < buttons.Length; index++)
-                result &= buttons[index].Bounds == Scaled(20 + index * 284, 96, 276, 30, scale)
+                result &= buttons[index].Bounds == Scaled(28 + index * 280, 96, 272, 30, scale)
                     && Near(buttons[index].ScaleFactor, scale) && Near(buttons[index].Font.Size, 12 * scale);
             foreach (var key in new[] { "resetChoice", "countdownChoice", "planChoice", "claudeChoice" })
             {
@@ -190,6 +207,23 @@ namespace PersonalUsageOverlay
                 result &= Near(choice.ScaleFactor, scale) && Near(choice.Font.Size, 14 * scale);
             }
             return result && Near(Field<ThemedTrackBar>(window, "transparencyChoice").ScaleFactor, scale);
+        }
+
+        private static bool OuterMarginsFit(SettingsWindow window, Panel content, Panel page, float scale)
+        {
+            int side = (int)Math.Round(28 * scale);
+            int bottom = (int)Math.Round(24 * scale);
+            var tabs = Field<ThemedButton[]>(window, "pageButtons");
+            var footer = Field<Label>(window, "footer");
+            var actions = new Dictionary<string, Control>();
+            foreach (Control control in content.Controls)
+                if (control.AccessibleName == "버전 정보" || control.AccessibleName == "종료")
+                    actions.Add(control.AccessibleName, control);
+            return !content.AutoScroll && page.Left == side && tabs[0].Left == side && footer.Left == side
+                && content.Width - page.Right == side && content.Width - tabs[1].Right == side
+                && actions.Count == 2 && content.Width - actions["버전 정보"].Right == side
+                && content.Width - actions["종료"].Right == side && content.Height - actions["종료"].Bottom == bottom
+                && content.Height - footer.Bottom == bottom;
         }
 
         private sealed class ControlState
@@ -205,8 +239,8 @@ namespace PersonalUsageOverlay
                 result.Add(new ControlState { Bounds = control.Bounds, FontSize = control.Font.Size, FontUnit = control.Font.Unit });
             return result;
         }
-        private static Control Content(SettingsWindow window)
-        { return (Control)typeof(SettingsFrame).GetField("ContentHost", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(window); }
+        private static Panel Content(SettingsWindow window)
+        { return (Panel)typeof(SettingsFrame).GetField("ContentHost", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(window); }
         private static T Field<T>(SettingsWindow window, string name)
         { return (T)typeof(SettingsWindow).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(window); }
         private static Rectangle Scaled(int left, int top, int width, int height, float scale)

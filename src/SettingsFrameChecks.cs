@@ -44,13 +44,15 @@ namespace PersonalUsageOverlay
                     bool read = GetWindowRect(handle, out outer) && Native.GetClientRect(handle, out client);
                     var origin = new Native.POINT();
                     read &= Native.ClientToScreen(handle, ref origin);
-                    Rectangle buttons = window.NativeCaptionButtons;
+                    Button minimize = window.CaptionMinimizeButton, close = window.CaptionCloseButton;
+                    Rectangle buttons = Rectangle.Union(minimize.Bounds, close.Bounds);
                     Rectangle icon = window.CaptionIconBounds;
-                    var textPoint = new Point(icon.Right + (int)Math.Round(24 * scale), window.CaptionHeight / 2);
+                    Rectangle title = window.CaptionTextBounds;
+                    var textPoint = new Point(icon.Right + (int)Math.Round(24 * scale), title.Top + title.Height / 2);
                     int textHit = Hit(handle, window.PointToScreen(textPoint));
                     int iconHit = Hit(handle, window.PointToScreen(new Point(icon.Left + icon.Width / 2, icon.Top + icon.Height / 2)));
-                    int minimizeHit = Hit(handle, window.PointToScreen(new Point(buttons.Left + buttons.Width / 6, buttons.Top + buttons.Height / 2)));
-                    int closeHit = Hit(handle, window.PointToScreen(new Point(buttons.Right - Math.Max(1, buttons.Width / 6), buttons.Top + buttons.Height / 2)));
+                    int minimizeHit = Hit(handle, window.PointToScreen(Center(minimize.Bounds)));
+                    int closeHit = Hit(handle, window.PointToScreen(Center(close.Bounds)));
                     bool custom = window.HasCustomCaption;
                     int captionHeight = window.CaptionHeight;
                     bool expectedCustom = composed && !SystemInformation.HighContrast;
@@ -59,26 +61,40 @@ namespace PersonalUsageOverlay
                         && origin.X == outer.Left && origin.Y == outer.Top
                         && client.Right - client.Left == outer.Right - outer.Left
                         && client.Bottom - client.Top == outer.Bottom - outer.Top);
-                    Control content = window.Controls.Count == 1 ? window.Controls[0] : null;
-                    checks["settings_frame_caption_has_scaled_room_and_separate_content" + suffix] = !custom || (content != null
-                        && window.CaptionHeight == (int)Math.Round(44 * scale)
+                    Rectangle content = window.ContentBounds;
+                    checks["settings_frame_caption_has_scaled_room_and_separate_content" + suffix] = !custom || (window.CaptionHeight == (int)Math.Round(44 * scale)
                         && content.Top == window.CaptionHeight && content.Bottom == window.ClientSize.Height
-                        && icon.Top >= (int)Math.Round(10 * scale) && icon.Bottom <= window.CaptionHeight - (int)Math.Round(10 * scale));
-                    checks["settings_frame_text_drags_and_icon_opens_native_system_menu" + suffix] = !custom || (textHit == 2 && iconHit == 3);
-                    checks["settings_frame_native_minimize_and_close_hit_targets" + suffix] = !custom || (minimizeHit == 8 && closeHit == 20);
-                    SendMessage(handle, 0x112, new IntPtr(0xf020), IntPtr.Zero); // SC_MINIMIZE, our invisible fixture only.
+                        && icon.Top >= 0 && icon.Bottom <= window.CaptionHeight
+                        && icon.Width == (int)Math.Round(20 * scale) && icon.Height == icon.Width);
+                    checks["settings_frame_caption_items_share_full_height_center" + suffix] = !custom
+                        || (Centered(title, captionHeight) && Centered(icon, captionHeight)
+                            && Centered(minimize.Bounds, captionHeight) && Centered(close.Bounds, captionHeight)
+                            && title.Top == 0 && title.Bottom == captionHeight
+                            && title.Left - icon.Right == (int)Math.Round(12 * scale)
+                            && buttons.Left - title.Right == (int)Math.Round(12 * scale)
+                            && minimize.Right == close.Left && close.Right < window.ClientSize.Width);
+                    checks["settings_frame_text_drags_and_icon_has_its_menu_hit_target" + suffix] = !custom || (textHit == 2 && iconHit == 3);
+                    long style = Native.GetWindowLongPtr(handle, -16).ToInt64();
+                    bool nativeControls = (style & 0x80000) != 0; // WS_SYSMENU
+                    checks["settings_frame_accessible_caption_buttons_replace_native_glyphs" + suffix] = custom
+                        ? !nativeControls && minimize.Visible && close.Visible && minimizeHit == 1 && closeHit == 1
+                            && minimize.AccessibleName == "최소화" && close.AccessibleName == "닫기"
+                        : nativeControls && !minimize.Visible && !close.Visible;
+                    if (custom) minimize.PerformClick();
+                    else SendMessage(handle, 0x112, new IntPtr(0xf020), IntPtr.Zero); // SC_MINIMIZE, our invisible fixture only.
                     bool minimized = window.WindowState == FormWindowState.Minimized && Native.IsIconic(handle);
                     checks["settings_frame_native_minimize_preserves_existing_window" + suffix] = minimized && !window.IsDisposed;
                     Native.ShowWindow(handle, 4); // SW_SHOWNOACTIVATE restores without taking the user's focus.
                     bool restored = window.WindowState == FormWindowState.Normal && !Native.IsIconic(handle);
                     checks["settings_frame_restore_keeps_same_window" + suffix] = restored && window.Handle == handle;
-                    SendMessage(handle, 0x10, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE follows the same close path as caption X.
+                    if (custom) close.PerformClick();
+                    else SendMessage(handle, 0x10, IntPtr.Zero, IntPtr.Zero);
                     bool disposed = window.IsDisposed && !Native.IsWindow(handle);
                     checks["settings_frame_native_close_is_not_cancelled_or_hidden" + suffix] = disposed && closing == 1 && !cancelled;
                     observations.Add(new {
                         scale = scale, customCaption = custom, captionHeight = captionHeight,
                         boundsRead = read, window = Bounds(outer), client = Bounds(client), clientScreenOrigin = new { x = origin.X, y = origin.Y },
-                        captionButtons = Bounds(buttons), icon = Bounds(icon), textHit = textHit, iconHit = iconHit,
+                        captionButtons = Bounds(buttons), icon = Bounds(icon), title = Bounds(title), textHit = textHit, iconHit = iconHit,
                         minimizeHit = minimizeHit, closeHit = closeHit, minimized = minimized, restored = restored,
                         disposed = disposed, closingEvents = closing, cancelled = cancelled
                     });
@@ -87,6 +103,14 @@ namespace PersonalUsageOverlay
             checks["settings_frame_fixtures_do_not_activate_or_create_taskbar_windows"] = Native.GetForegroundWindow() == foreground;
             Observation = new { dwmComposition = composed, highContrast = SystemInformation.HighContrast, icon = iconObservation, samples = observations };
         }
+
+        private static bool Centered(Rectangle bounds, int height)
+        {
+            return bounds.Width > 0 && bounds.Height > 0 && Math.Abs(bounds.Top + bounds.Bottom - height) <= 1;
+        }
+
+        private static Point Center(Rectangle bounds)
+        { return new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2); }
 
         private static int Hit(IntPtr handle, Point screen)
         {

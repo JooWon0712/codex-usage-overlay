@@ -1,18 +1,26 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PersonalUsageOverlay
 {
-    // Only the title/icon are client-painted. Windows owns the caption buttons,
-    // system menu, move loop, minimize and close commands.
+    // Paint the full extended caption so its title and window controls can
+    // share a center line. The standard frame is used in high contrast.
     // https://learn.microsoft.com/windows/win32/dwm/customframe
     internal class SettingsFrame : Form
     {
         internal const int CaptionHeightDip = 44;
+        private const int NativeCaptionControls = 0x00080000 | 0x00020000 | 0x00010000;
+        private const int WmSystemCommand = 0x0112;
+        private const int ScMove = 0xf010;
+        private const int ScKeyMenu = 0xf100;
         protected readonly Panel ContentHost = new Panel();
+        private readonly CaptionButton minimizeButton = new CaptionButton(false);
+        private readonly CaptionButton closeButton = new CaptionButton(true);
+        private readonly ContextMenuStrip captionMenu = new ContextMenuStrip();
         private bool customFrame = CanUseCustomFrame(), changingFrame;
         private float frameScale = 1f;
         private Font captionFont;
@@ -25,8 +33,20 @@ namespace PersonalUsageOverlay
             applicationIcon = LoadApplicationIcon();
             ShowIcon = true; Icon = applicationIcon;
             Controls.Add(ContentHost);
+            Controls.Add(minimizeButton);
+            Controls.Add(closeButton);
+            minimizeButton.Click += delegate { WindowState = FormWindowState.Minimized; };
+            closeButton.Click += delegate { Close(); };
+            captionMenu.Items.Add("이동", null, delegate { PostMessage(Handle, WmSystemCommand, new IntPtr(ScMove), IntPtr.Zero); });
+            captionMenu.Items.Add("최소화", null, delegate { WindowState = FormWindowState.Minimized; });
+            captionMenu.Items.Add(new ToolStripSeparator());
+            captionMenu.Items.Add("닫기", null, delegate { Close(); });
             SetFrameScale(1f);
         }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PostMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
         private static Icon LoadApplicationIcon()
         {
@@ -39,6 +59,10 @@ namespace PersonalUsageOverlay
 
         internal bool HasCustomCaption { get { return customFrame && FormBorderStyle != FormBorderStyle.None; } }
         internal int CaptionHeight { get { return HasCustomCaption ? (int)Math.Round(CaptionHeightDip * frameScale) : 0; } }
+        internal Button CaptionMinimizeButton { get { return minimizeButton; } }
+        internal Button CaptionCloseButton { get { return closeButton; } }
+        internal Rectangle ContentBounds { get { return ContentHost.Bounds; } }
+
         internal Rectangle CaptionIconBounds
         {
             get
@@ -47,17 +71,25 @@ namespace PersonalUsageOverlay
                 return new Rectangle((int)Math.Round(14 * frameScale), (CaptionHeight - size) / 2, size, size);
             }
         }
-        internal Rectangle NativeCaptionButtons
+
+        internal Rectangle CaptionTextBounds
         {
             get
             {
-                Native.RECT rect;
-                if (IsHandleCreated && Native.DwmGetWindowRectAttribute(Handle, 5, out rect, Marshal.SizeOf(typeof(Native.RECT))) == 0
-                    && rect.Right > rect.Left && rect.Bottom > rect.Top
-                    && rect.Left >= 0 && rect.Right <= ClientSize.Width && rect.Top >= 0 && rect.Bottom <= CaptionHeight)
-                    return Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
-                return new Rectangle(Math.Max(0, ClientSize.Width - (int)Math.Round(138 * frameScale)), 0,
-                    (int)Math.Round(138 * frameScale), CaptionHeight);
+                int gap = (int)Math.Round(12 * frameScale);
+                int left = CaptionIconBounds.Right + gap;
+                int end = !ControlBox ? ClientSize.Width : MinimizeBox ? minimizeButton.Left : closeButton.Left;
+                return new Rectangle(left, 0, Math.Max(0, end - left - gap), CaptionHeight);
+            }
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                if (HasCustomCaption) parameters.Style &= ~NativeCaptionControls;
+                return parameters;
             }
         }
 
@@ -118,6 +150,18 @@ namespace PersonalUsageOverlay
         {
             if (ContentHost == null) return;
             ContentHost.SetBounds(0, CaptionHeight, ClientSize.Width, Math.Max(0, ClientSize.Height - CaptionHeight));
+            if (minimizeButton == null || closeButton == null) return;
+            bool useButtons = HasCustomCaption && ControlBox;
+            closeButton.Visible = useButtons;
+            minimizeButton.Visible = useButtons && MinimizeBox;
+            if (!useButtons) return;
+
+            int right = Math.Max(0, ClientSize.Width - (int)Math.Round(6 * frameScale));
+            int width = Math.Min((int)Math.Round(46 * frameScale), right / (MinimizeBox ? 2 : 1));
+            int height = Math.Min(CaptionHeight, (int)Math.Round(32 * frameScale));
+            int top = (CaptionHeight - height) / 2;
+            closeButton.SetBounds(right - width, top, width, height);
+            minimizeButton.SetBounds(right - 2 * width, top, width, height);
         }
 
         private void RefreshFrame()
@@ -135,6 +179,7 @@ namespace PersonalUsageOverlay
                 {
                     Size bodySize = ContentHost.Size;
                     customFrame = available;
+                    UpdateStyles();
                     Native.SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x37); // FRAMECHANGED | NOACTIVATE | NOMOVE | NOSIZE | NOZORDER
                     SetContentSize(bodySize.Width, bodySize.Height);
                 }
@@ -164,10 +209,10 @@ namespace PersonalUsageOverlay
         private void PaintCaption(Graphics graphics)
         {
             if (!HasCustomCaption || captionFont == null) return;
-            Rectangle iconBounds = CaptionIconBounds;
-            graphics.DrawIcon(applicationIcon, iconBounds);
-            int left = iconBounds.Right + (int)Math.Round(12 * frameScale);
-            Rectangle textBounds = new Rectangle(left, 0, Math.Max(0, NativeCaptionButtons.Left - left - (int)Math.Round(12 * frameScale)), CaptionHeight);
+            using (var background = new SolidBrush(CaptionBackground))
+                graphics.FillRectangle(background, 0, 0, ClientSize.Width, CaptionHeight);
+            graphics.DrawIcon(applicationIcon, CaptionIconBounds);
+            Rectangle textBounds = CaptionTextBounds;
             // GDI TextRenderer clears glyph alpha in the extended DWM frame.
             // GDI+ retains coverage so the title stays opaque and antialiased.
             var state = graphics.Save();
@@ -186,15 +231,23 @@ namespace PersonalUsageOverlay
             finally { graphics.Restore(state); }
         }
 
-        // WM_PRINT adds a synthetic old non-client caption on custom DWM forms.
-        // This developer sample contains our client area only; OS caption buttons
-        // require an actual Windows screen capture, not a DrawToBitmap claim.
+        private Color CaptionBackground
+        {
+            get { return frameTheme.IsDark ? frameTheme.Hover : frameTheme.Surface; }
+        }
+
+        // WM_PRINT can add a synthetic desktop caption. Render only client controls.
         internal Bitmap RenderClientPreview()
         {
             var bitmap = new Bitmap(ClientSize.Width, ClientSize.Height);
             using (var graphics = Graphics.FromImage(bitmap))
             {
                 graphics.Clear(frameTheme.Background); PaintCaption(graphics);
+                if (HasCustomCaption && ControlBox)
+                {
+                    closeButton.DrawCaption(graphics, closeButton.Bounds);
+                    if (MinimizeBox) minimizeButton.DrawCaption(graphics, minimizeButton.Bounds);
+                }
                 using (var content = new Bitmap(ContentHost.Width, ContentHost.Height))
                 {
                     ContentHost.DrawToBitmap(content, new Rectangle(Point.Empty, ContentHost.Size));
@@ -207,8 +260,32 @@ namespace PersonalUsageOverlay
         internal int CaptionHitTest(Point client)
         {
             if (!HasCustomCaption || client.Y < 0 || client.Y >= CaptionHeight || client.X < 0 || client.X >= ClientSize.Width) return 1;
-            if (NativeCaptionButtons.Contains(client)) return 1; // DWM gets first refusal in WndProc.
-            return CaptionIconBounds.Contains(client) ? 3 : 2; // HTSYSMENU, HTCAPTION
+            if (ControlBox && (closeButton.Bounds.Contains(client) || (MinimizeBox && minimizeButton.Bounds.Contains(client)))) return 1;
+            return ControlBox && CaptionIconBounds.Contains(client) ? 3 : 2; // HTSYSMENU, HTCAPTION
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (HasCustomCaption && ControlBox)
+            {
+                if (keyData == (Keys.Alt | Keys.Space))
+                {
+                    OpenCaptionMenu(new Point(CaptionIconBounds.Left, CaptionHeight));
+                    return true;
+                }
+                if (keyData == (Keys.Alt | Keys.F4))
+                {
+                    Close();
+                    return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private void OpenCaptionMenu(Point location)
+        {
+            captionMenu.Items[1].Enabled = MinimizeBox;
+            captionMenu.Show(this, location);
         }
 
         protected override void WndProc(ref Message m)
@@ -216,16 +293,25 @@ namespace PersonalUsageOverlay
             if (HasCustomCaption)
             {
                 if (m.Msg == 0x83 && m.WParam != IntPtr.Zero) { m.Result = IntPtr.Zero; return; } // WM_NCCALCSIZE
-                IntPtr result;
-                // Keep Form's paint/activation/lifetime messages in WinForms.
-                // DWM only consumes non-client input for the standard buttons.
-                bool captionInput = m.Msg == 0x84 || m.Msg == 0x86 || (m.Msg >= 0xa0 && m.Msg <= 0xad) || m.Msg == 0x2a2;
-                if (captionInput && Native.DwmDefWindowProc(m.HWnd, m.Msg, m.WParam, m.LParam, out result)) { m.Result = result; return; }
                 if (m.Msg == 0x84) // WM_NCHITTEST, signed coordinates support monitors left/above primary.
                 {
-                    long packed = m.LParam.ToInt64();
-                    var client = PointToClient(new Point(unchecked((short)(packed & 0xffff)), unchecked((short)((packed >> 16) & 0xffff))));
-                    m.Result = new IntPtr(CaptionHitTest(client)); return;
+                    m.Result = new IntPtr(CaptionHitTest(ToClientPoint(m.LParam)));
+                    return;
+                }
+                if (ControlBox && m.Msg == WmSystemCommand && (m.WParam.ToInt64() & 0xfff0) == ScKeyMenu && m.LParam.ToInt64() == (long)Keys.Space)
+                {
+                    OpenCaptionMenu(new Point(CaptionIconBounds.Left, CaptionHeight));
+                    return;
+                }
+                if (ControlBox && m.Msg == 0xa1 && m.WParam.ToInt32() == 3) // WM_NCLBUTTONDOWN on the icon
+                {
+                    OpenCaptionMenu(new Point(CaptionIconBounds.Left, CaptionHeight));
+                    return;
+                }
+                if (ControlBox && m.Msg == 0xa5 && (m.WParam.ToInt32() == 2 || m.WParam.ToInt32() == 3))
+                {
+                    OpenCaptionMenu(ToClientPoint(m.LParam)); // WM_NCRBUTTONUP
+                    return;
                 }
             }
             base.WndProc(ref m);
@@ -237,10 +323,73 @@ namespace PersonalUsageOverlay
             }
         }
 
+        private Point ToClientPoint(IntPtr coordinates)
+        {
+            long packed = coordinates.ToInt64();
+            return PointToClient(new Point(unchecked((short)packed), unchecked((short)(packed >> 16))));
+        }
+
         protected override void Dispose(bool disposing)
         {
             base.Dispose(disposing);
-            if (disposing) { if (captionFont != null) captionFont.Dispose(); applicationIcon.Dispose(); }
+            if (disposing)
+            {
+                captionMenu.Dispose();
+                if (captionFont != null) captionFont.Dispose();
+                applicationIcon.Dispose();
+            }
+        }
+
+        private sealed class CaptionButton : Button
+        {
+            private readonly bool close;
+            private bool hovered;
+
+            internal CaptionButton(bool close)
+            {
+                this.close = close;
+                AccessibleName = close ? "닫기" : "최소화";
+                TabStop = true;
+                SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            }
+
+            protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovered = true; Invalidate(); }
+            protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hovered = false; Invalidate(); }
+            protected override void OnPaint(PaintEventArgs e) { DrawCaption(e.Graphics, ClientRectangle); }
+
+            internal void DrawCaption(Graphics graphics, Rectangle bounds)
+            {
+                SettingsFrame frame = (SettingsFrame)Parent;
+                Color text = frame.frameTheme.Text;
+                Color background = frame.CaptionBackground;
+                if (hovered)
+                {
+                    background = close ? Color.FromArgb(0xa9, 0x2d, 0x47) : frame.frameTheme.Pressed;
+                    if (close) text = Color.White;
+                }
+                using (var brush = new SolidBrush(background))
+                    graphics.FillRectangle(brush, bounds);
+
+                var state = graphics.Save();
+                try
+                {
+                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    float x = bounds.Left + bounds.Width / 2f, y = bounds.Top + bounds.Height / 2f;
+                    float size = 4.5f * frame.frameScale;
+                    using (var pen = new Pen(text, Math.Max(1, frame.frameScale)))
+                    {
+                        if (close)
+                        {
+                            graphics.DrawLine(pen, x - size, y - size, x + size, y + size);
+                            graphics.DrawLine(pen, x - size, y + size, x + size, y - size);
+                        }
+                        else graphics.DrawLine(pen, x - size, y, x + size, y);
+                    }
+                }
+                finally { graphics.Restore(state); }
+                if (Focused)
+                    ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(bounds, -3, -3), text, background);
+            }
         }
     }
 }

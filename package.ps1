@@ -12,7 +12,8 @@ $script:CuoBridgeFiles = @(
     'claude-code-overlay/hooks/hooks.json',
     'claude-code-overlay/hooks/register.js'
 )
-$script:CuoPortableFiles = $script:CuoStatuslinePortableFiles + $script:CuoBridgeFiles
+$script:CuoBridgePortableFiles = $script:CuoStatuslinePortableFiles + $script:CuoBridgeFiles
+$script:CuoPortableFiles = $script:CuoBridgePortableFiles + 'claude-usage-probe.mjs'
 
 function Assert-CuoPortableChildPath {
     param([string]$Path, [string]$Root)
@@ -43,9 +44,10 @@ function Assert-CuoPortablePayload {
     Assert-CuoPortableNoReparsePoint $path $Root
     if (-not (Test-Path -LiteralPath $path -PathType Container)) { throw 'Portable payload is missing.' }
     $files = $script:CuoPortableFiles
-    if ($AllowPreviousLayout -and -not (Test-Path -LiteralPath (Join-Path $path 'claude-code-overlay'))) {
-        $files = $script:CuoStatuslinePortableFiles
-        if (-not [IO.File]::Exists((Join-Path $path 'claude-statusline.mjs'))) { $files = $script:CuoPreClaudePortableFiles }
+    if ($AllowPreviousLayout -and -not (Test-Path -LiteralPath (Join-Path $path 'claude-usage-probe.mjs'))) {
+        if (Test-Path -LiteralPath (Join-Path $path 'claude-code-overlay')) { $files = $script:CuoBridgePortableFiles }
+        elseif (Test-Path -LiteralPath (Join-Path $path 'claude-statusline.mjs')) { $files = $script:CuoStatuslinePortableFiles }
+        else { $files = $script:CuoPreClaudePortableFiles }
     }
     $expected = @{}
     foreach ($name in $files) {
@@ -84,6 +86,7 @@ function Assert-CuoPortableArchive {
         if ($AllowPreviousLayout) {
             if ($zip.Entries.Count -eq $script:CuoPreClaudePortableFiles.Count) { $files = $script:CuoPreClaudePortableFiles }
             elseif ($zip.Entries.Count -eq $script:CuoStatuslinePortableFiles.Count) { $files = $script:CuoStatuslinePortableFiles }
+            elseif ($zip.Entries.Count -eq $script:CuoBridgePortableFiles.Count) { $files = $script:CuoBridgePortableFiles }
         }
         if ($zip.Entries.Count -ne $files.Count) { throw 'Unexpected portable archive entry count.' }
         $seen = @{}

@@ -51,7 +51,8 @@ namespace PersonalUsageOverlay
             {
                 state.planType = value;
                 var missing = UsagePresentation.Create(state, now, TimeZoneInfo.Utc);
-                safe &= missing.PlanText == "요금제 확인 불가" && !missing.BadgeDetailText(true).Contains("private@example.com");
+                safe &= missing.PlanText == "요금제 확인 불가" && missing.CompactPlanText == null
+                    && !missing.BadgeDetailText(true).Contains("private@example.com");
             }
             checks["plan_missing_unknown_unsupported_and_untrusted_types_are_unavailable_not_guessed"] = safe;
             state.planType = "pro";
@@ -73,8 +74,69 @@ namespace PersonalUsageOverlay
             checks["plan_unrelated_bucket_cannot_supply_the_codex_account_plan"] = UsagePresentation.Create(state, now, TimeZoneInfo.Utc).PlanText == "요금제 확인 불가";
             var example = UsagePresentation.CreatePreview(now, TimeZoneInfo.Utc);
             checks["plan_settings_preview_remains_explicit_launch_time_example_not_live_account_data"] = example.PlanText == "Plus"
+                && example.CompactPlanText == "Plus" && example.Claude.PlanText == "Pro"
                 && example.BadgeDetailText(true) == "갱신 00:00:00 · 예시 · Plus" && !example.HasQueryFailure;
+            CheckCombinedBadgePlans(checks, example);
             CheckSettings(checks);
+        }
+
+        private static void CheckCombinedBadgePlans(Dictionary<string, bool> checks, UsagePresentation example)
+        {
+            bool compactCodex = true, compactClaude = true, compactQuotas = true, detailedClaude = true;
+            foreach (bool compact in new[] { false, true })
+            foreach (float scale in new[] { 1f, 1.5f, 2f })
+            {
+                var layout = new BadgeLayoutSettings { ShowClaude = true, Compact = compact };
+                layout.Normalize();
+                var size = new Size((int)Math.Round(layout.Width * scale), (int)Math.Round(layout.Height * scale));
+                var hiddenPlan = layout.Copy();
+                hiddenPlan.ShowPlan = false;
+                using (var visible = BadgeRenderer.CreateGlyphBitmap(size, scale, VisualTheme.Dark, example, layout))
+                using (var hidden = BadgeRenderer.CreateGlyphBitmap(size, scale, VisualTheme.Dark, example, hiddenPlan))
+                {
+                    int left = (int)Math.Round(layout.ContentPadding * scale);
+                    if (compact)
+                    {
+                        int serviceRight = left + (int)Math.Round(86 * scale);
+                        int codexTop = (int)Math.Round(layout.HeaderHeight * scale);
+                        int codexBottom = (int)Math.Round(layout.CodexHeight * scale);
+                        int claudeBottom = (int)Math.Round((layout.Height - BadgeLayoutSettings.CompactClaudeBottomPadding) * scale);
+                        int split = codexBottom + (claudeBottom - codexBottom) / 2;
+                        // The bottom part of the Codex row is below the centered name shown with plans disabled.
+                        int codexPlanTop = codexTop + (int)Math.Round((codexBottom - codexTop) * 0.67);
+                        var codexPlan = Rectangle.FromLTRB(left, codexPlanTop, serviceRight, codexBottom);
+                        var claudePlan = Rectangle.FromLTRB(left, split, serviceRight, claudeBottom);
+                        compactCodex &= HasInk(visible, codexPlan) && !HasInk(hidden, codexPlan);
+                        compactClaude &= HasInk(visible, claudePlan) && !HasInk(hidden, claudePlan);
+                        compactQuotas &= !PixelsDiffer(visible, hidden, Rectangle.FromLTRB(serviceRight, codexTop, size.Width, size.Height));
+                    }
+                    else
+                    {
+                        var element = layout.Elements.Find(item => item.Key == "claude-heading");
+                        int top = (int)Math.Round(element.Y * scale);
+                        int height = (int)Math.Round(BadgeLayoutSettings.ElementHeight(element) * scale);
+                        detailedClaude &= PixelsDiffer(visible, hidden, new Rectangle(left, top, size.Width - 2 * left, height));
+                    }
+                }
+            }
+            checks["plan_compact_option_shows_both_service_plans_without_moving_quota_rows"] = compactCodex && compactClaude && compactQuotas;
+            checks["plan_detailed_option_toggles_the_claude_plan_in_the_service_header"] = detailedClaude;
+        }
+
+        private static bool HasInk(Bitmap image, Rectangle bounds)
+        {
+            for (int y = bounds.Top; y < bounds.Bottom; y++)
+                for (int x = bounds.Left; x < bounds.Right; x++)
+                    if (image.GetPixel(x, y).A != 0) return true;
+            return false;
+        }
+
+        private static bool PixelsDiffer(Bitmap first, Bitmap second, Rectangle bounds)
+        {
+            for (int y = bounds.Top; y < bounds.Bottom; y++)
+                for (int x = bounds.Left; x < bounds.Right; x++)
+                    if (first.GetPixel(x, y) != second.GetPixel(x, y)) return true;
+            return false;
         }
 
         private static void CheckSettings(Dictionary<string, bool> checks)
@@ -102,20 +164,22 @@ namespace PersonalUsageOverlay
                 checks["plan_display_checkbox_updates_only_layout_and_preview_without_replacing_example"] = disabled && loaded
                     && host.Prefs.BadgeLayout.ShowPlan && preview.LayoutSettings.ShowPlan && Object.ReferenceEquals(cached, preview.Presentation);
                 var layout = preview.LayoutSettings.Copy();
-                using (var visible = BadgeRenderer.CreateGlyphBitmap(new Size(480,123), 1.5f, VisualTheme.Dark, cached, layout))
+                var size = new Size((int)Math.Round(layout.Width * 1.5f), (int)Math.Round(layout.Height * 1.5f));
+                using (var visible = BadgeRenderer.CreateGlyphBitmap(size, 1.5f, VisualTheme.Dark, cached, layout))
                 {
                     layout.ShowPlan = false;
-                    using (var hidden = BadgeRenderer.CreateGlyphBitmap(new Size(480,123), 1.5f, VisualTheme.Dark, cached, layout))
+                    using (var hidden = BadgeRenderer.CreateGlyphBitmap(size, 1.5f, VisualTheme.Dark, cached, layout))
                     {
-                        bool heading = true, changedMetadata = false;
+                        bool quotaUnchanged = true, statusChanged = false;
+                        int quotaTop = (int)Math.Round(layout.Elements.Find(element => element.Key == "remaining").Y * 1.5f);
                         for (int y = 0; y < visible.Height; y++)
                             for (int x = 0; x < visible.Width; x++)
                             {
                                 bool differs = visible.GetPixel(x,y) != hidden.GetPixel(x,y);
-                                if (y < 45) heading &= !differs;
-                                else if (differs) changedMetadata = true;
+                                if (y >= quotaTop) quotaUnchanged &= !differs;
+                                else if (differs) statusChanged = true;
                             }
-                        checks["plan_display_toggle_changes_rendered_metadata_without_moving_heading_or_countdown"] = heading && changedMetadata;
+                        checks["plan_display_toggle_changes_rendered_status_without_moving_quota_or_countdown"] = quotaUnchanged && statusChanged;
                     }
                 }
             }

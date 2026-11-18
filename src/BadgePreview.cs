@@ -11,6 +11,7 @@ namespace PersonalUsageOverlay
         private VisualTheme theme = VisualTheme.Dark;
         private BadgeLayoutSettings layout = new BadgeLayoutSettings();
         public float UiScale = 1;
+        internal ServiceIcons Icons { get; set; }
         public UsagePresentation Presentation
         {
             get { return presentation; }
@@ -41,10 +42,11 @@ namespace PersonalUsageOverlay
             base.OnPaint(e);
             using (var fill = new SolidBrush(CanvasColor)) e.Graphics.FillRectangle(fill, ClientRectangle);
             float margin = 16 * UiScale;
-            float scale = Math.Min(UiScale, Math.Min((Width - 2 * margin) / layout.Width, (Height - 2 * margin) / layout.Height));
+            float verticalMargin = Math.Max(6 * UiScale, Math.Min(margin, (Height - layout.Height * UiScale) / 2));
+            float scale = Math.Min(UiScale, Math.Min((Width - 2 * margin) / layout.Width, (Height - 2 * verticalMargin) / layout.Height));
             if (scale <= 0) return;
             int width = (int)Math.Round(layout.Width * scale), height = (int)Math.Round(layout.Height * scale);
-            BadgeRenderer.Draw(e.Graphics, new Rectangle((Width - width) / 2, (Height - height) / 2, width, height), scale, theme, presentation, layout);
+            BadgeRenderer.Draw(e.Graphics, new Rectangle((Width - width) / 2, (Height - height) / 2, width, height), scale, theme, presentation, layout, Icons);
         }
     }
 }

@@ -10,26 +10,39 @@ namespace PersonalUsageOverlay
     internal sealed class UsagePresentation
     {
         public readonly string MainText, DetailText, ResetText, ResetDateText, CountdownText, FailureDetails;
+        public readonly string CompactResetText;
+        internal readonly string CodexResetTimeText, CodexResetDay, CodexOtherPeriodsText;
         public readonly bool HasQueryFailure;
         public readonly string PlanText;
+        internal string CompactPlanText
+        {
+            get { return PlanText == "요금제 확인 불가" || PlanText == "요금제 확인 중" ? null : PlanText; }
+        }
         public readonly double? LowWeeklyRemaining;
+        public readonly double? CodexRemaining, CodexBarRemaining;
         public readonly UsageTone Tone;
         public readonly ClaudeUsageDisplay Claude;
         private UsagePresentation(string mainText, string detailText, ResetPresentation reset,
             double? lowWeeklyRemaining, UsageTone tone, bool hasQueryFailure, string failureDetails, string planText,
-            ClaudeUsageDisplay claude)
+            ClaudeUsageDisplay claude, double? codexRemaining, double? codexBarRemaining, string codexOtherPeriodsText)
         {
             MainText = mainText;
             DetailText = detailText;
             ResetText = reset.Combined;
             ResetDateText = reset.Date;
+            CompactResetText = reset.Compact;
             CountdownText = reset.Countdown;
+            CodexResetTimeText = reset.Time;
+            CodexResetDay = reset.Day;
             LowWeeklyRemaining = lowWeeklyRemaining;
             Tone = tone;
             HasQueryFailure = hasQueryFailure;
             FailureDetails = failureDetails;
             PlanText = planText;
             Claude = claude;
+            CodexRemaining = codexRemaining;
+            CodexBarRemaining = codexBarRemaining;
+            CodexOtherPeriodsText = codexOtherPeriodsText;
         }
 
         public string BadgeDetailText(bool showPlan)
@@ -44,8 +57,10 @@ namespace PersonalUsageOverlay
         internal bool HasSameDisplayAs(UsagePresentation prior)
         {
             return prior != null && prior.MainText == MainText && prior.DetailText == DetailText && prior.PlanText == PlanText
-                && prior.ResetDateText == ResetDateText && prior.CountdownText == CountdownText
+                && prior.ResetDateText == ResetDateText && prior.CompactResetText == CompactResetText && prior.CountdownText == CountdownText
                 && prior.LowWeeklyRemaining == LowWeeklyRemaining && prior.Tone == Tone
+                && prior.CodexRemaining == CodexRemaining && prior.CodexBarRemaining == CodexBarRemaining
+                && prior.CodexOtherPeriodsText == CodexOtherPeriodsText
                 && prior.HasQueryFailure == HasQueryFailure && prior.FailureDetails == FailureDetails
                 && (Claude == null ? prior.Claude == null : Claude.HasSameDisplayAs(prior.Claude));
         }
@@ -74,8 +89,10 @@ namespace PersonalUsageOverlay
                 }
             };
             var reset = WeeklyResetText(windows, startedAt, zone, true);
+            double remaining = windows[0].remainingPercent;
             return new UsagePresentation("주간 96% 남음", "갱신 " + TimeText(startedAt.ToString("o", CultureInfo.InvariantCulture), zone) + " · 예시",
-                reset, null, UsageTone.Normal, false, String.Empty, "Plus", ClaudeUsageDisplay.Example(startedAt));
+                reset, null, UsageTone.Normal, false, String.Empty, "Plus", ClaudeUsageDisplay.Example(startedAt, zone),
+                remaining, remaining, String.Empty);
         }
 
         public static UsagePresentation Create(UsageState state, DateTimeOffset now, TimeZoneInfo zone, ClaudeUsageDisplay claude = null)
@@ -84,17 +101,23 @@ namespace PersonalUsageOverlay
             zone = zone ?? TimeZoneInfo.Local;
             var windows = (state.windows ?? new List<LimitWindow>()).FindAll(w => w != null && w.limitId == "codex");
             DateTimeOffset observed;
-            bool fresh = TryTime(state.observedAt, out observed) && observed <= now && now - observed < WeeklyQuotaWarning.FreshFor;
+            bool hasObservation = TryTime(state.observedAt, out observed) && observed <= now;
+            bool fresh = hasObservation && now - observed < WeeklyQuotaWarning.FreshFor;
             string status = state.status ?? "unavailable";
             if (status == "ok" && !fresh)
                 status = "stale";
             fresh = status == "ok" && fresh;
             double? lowWeekly = WeeklyQuotaWarning.Remaining(state, now);
             var parts = new List<string>();
+            var otherPeriods = new List<string>();
             foreach (var window in windows)
             {
-                string label = WindowLabel(window);
-                parts.Add(label + " " + window.remainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%");
+                if (!IsValidRemaining(window.remainingPercent))
+                    continue;
+                string part = WindowLabel(window) + " " + window.remainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+                parts.Add(part);
+                if (window.windowDurationMins != QuotaPeriods.WeeklyMinutes)
+                    otherPeriods.Add(part);
             }
 
             string mainText = parts.Count > 0 ? (fresh ? "" : "이전 값 · ") + string.Join(" · ", parts.ToArray()) + " 남음" : status == "loading" ? "한도 확인 중" : "한도 확인 불가";
@@ -105,13 +128,33 @@ namespace PersonalUsageOverlay
             var tone = lowWeekly.HasValue ? UsageTone.Low : status == "ok" && parts.Count > 0 ? UsageTone.Normal : UsageTone.Attention;
             bool hasQueryFailure = IsQueryFailure(state);
             string planName = PlanName(state.planType);
-            bool hasPlanObservation = windows.Count > 0 && TryTime(state.observedAt, out observed)
-                && observed <= now && state.reason != "account_changed";
+            bool hasPlanObservation = windows.Count > 0 && hasObservation && state.reason != "account_changed";
             string planText = hasPlanObservation && planName != null ? (fresh ? "" : "이전 ") + planName
                 : status == "loading" && state.observedAt == null ? "요금제 확인 중" : "요금제 확인 불가";
+            double? codexRemaining = hasPlanObservation && !hasQueryFailure ? UniqueWeeklyRemaining(windows) : null;
+            string otherPeriodsText = otherPeriods.Count == 0 ? String.Empty : String.Join(" · ", otherPeriods.ToArray()) + " 남음";
             return new UsagePresentation(mainText, detailText, resetText, lowWeekly, tone,
-                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText, claude);
+                hasQueryFailure, hasQueryFailure ? QueryFailureDetails(state, zone) : String.Empty, planText, claude,
+                codexRemaining, fresh ? codexRemaining : null, otherPeriodsText);
         }
+
+        private static double? UniqueWeeklyRemaining(List<LimitWindow> windows)
+        {
+            double? remaining = null;
+            foreach (var window in windows)
+            {
+                if (window.windowDurationMins != QuotaPeriods.WeeklyMinutes)
+                    continue;
+                double candidate = window.remainingPercent;
+                if (!IsValidRemaining(candidate) || (remaining.HasValue && remaining.Value != candidate))
+                    return null;
+                remaining = candidate;
+            }
+            return remaining;
+        }
+
+        private static bool IsValidRemaining(double value)
+        { return value >= 0 && value <= 100; }
 
         private static string PlanName(string value)
         {
@@ -174,12 +217,16 @@ namespace PersonalUsageOverlay
 
         private sealed class ResetPresentation
         {
-            public readonly string Combined, Date, Countdown;
-            public ResetPresentation(string date, string countdown, string combinedCountdown)
+            public readonly string Combined, Date, Countdown, Compact, Time, Day;
+            public ResetPresentation(string date, string countdown, string combinedCountdown, string compact = null,
+                string time = null, string day = null)
             {
                 Date = date;
                 Countdown = countdown;
                 Combined = date + (combinedCountdown == null ? "" : " · " + combinedCountdown);
+                Compact = compact;
+                Time = time;
+                Day = day;
             }
         }
 
@@ -191,7 +238,7 @@ namespace PersonalUsageOverlay
         private static ResetPresentation WeeklyResetText(List<LimitWindow> windows, DateTimeOffset now, TimeZoneInfo zone, bool fresh)
         {
             bool previous = !fresh && windows.Count > 0;
-            string prefix = previous ? "이전 주간 초기화" : "주간 초기화";
+            string prefix = previous ? "이전 초기화" : "초기화";
             double? seconds = null;
             DateTimeOffset reset = default(DateTimeOffset);
             foreach (LimitWindow window in windows)
@@ -212,13 +259,37 @@ namespace PersonalUsageOverlay
             if (reset <= now)
                 return new ResetPresentation(prefix + " 시각 지남", "갱신 필요", "갱신 필요");
             int days = (reset.Date - localNow.Date).Days;
-            if (days < 0)
+            string countdown = FormatWeeklyCountdown(days, reset - now);
+            if (countdown == null)
                 return UnknownReset(prefix, previous);
-            string date = reset.ToString(reset.Year == localNow.Year ? "MM/dd" : "yyyy/MM/dd", CultureInfo.InvariantCulture);
-            string weekday = new[] { "일", "월", "화", "수", "목", "금", "토" }[(int)reset.DayOfWeek];
-            string countdown = days == 0 ? "D-DAY" : "D-" + days.ToString(CultureInfo.InvariantCulture);
-            return new ResetPresentation(prefix + " " + date + "(" + weekday + ") " + reset.ToString("HH:mm", CultureInfo.InvariantCulture),
-                previous ? "이전 " + countdown : countdown, countdown);
+            string time = FormatDetailedReset(reset, reset.Year != localNow.Year);
+            return new ResetPresentation(prefix + " " + time, previous ? "이전 " + countdown : countdown,
+                days == 0 ? "D-DAY" : countdown, FormatCompactReset(reset, localNow), previous ? "이전 " + time : time, countdown);
+        }
+
+        internal static string FormatWeeklyCountdown(int calendarDays, TimeSpan remaining)
+        {
+            if (calendarDays < 0 || remaining <= TimeSpan.Zero) return null;
+            return calendarDays == 0 ? "D-DAY · " + FormatRemainingTime(remaining)
+                : "D-" + calendarDays.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static string FormatRemainingTime(TimeSpan remaining)
+        {
+            long minutes = (long)Math.Ceiling(remaining.TotalMinutes);
+            return String.Format(CultureInfo.InvariantCulture, "{0}h {1:00}m", minutes / 60, minutes % 60);
+        }
+
+        internal static string FormatDetailedReset(DateTimeOffset localReset, bool includeYear = false)
+        {
+            return localReset.ToString(includeYear ? "yyyy'년' M'월' d'일' HH:mm" : "M'월' d'일' HH:mm", CultureInfo.InvariantCulture);
+        }
+
+        internal static string FormatCompactReset(DateTimeOffset localReset, DateTimeOffset localNow)
+        {
+            return localReset.Date == localNow.Date
+                ? localReset.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : FormatDetailedReset(localReset);
         }
 
         private static bool TryReset(double? seconds, TimeZoneInfo zone, out DateTimeOffset result)

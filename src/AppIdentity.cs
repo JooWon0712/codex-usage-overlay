@@ -32,6 +32,16 @@ namespace PersonalUsageOverlay
             get { return Path.Combine(DataDirectory, "claude-usage.json"); }
         }
 
+        public static string ClaudeAutomaticUsageFile
+        {
+            get { return Path.Combine(DataDirectory, "claude-usage-auto.json"); }
+        }
+
+        public static string ClaudeRefreshRequestFile
+        {
+            get { return Path.Combine(DataDirectory, "claude-refresh-request.json"); }
+        }
+
         public static bool Acquire(Mutex mutex, int timeout)
         {
             try
