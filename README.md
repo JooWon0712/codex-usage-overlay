@@ -1,300 +1,186 @@
 # Codex Usage Overlay
 
-Windows용 Codex 데스크톱 앱 위에 **계정의 남은 사용 한도**를 작게 표시하는 개인용 보조 프로그램입니다. 소스 버전은 **1.2.0 포터블 버전**입니다.
+Windows용 Codex 데스크톱 앱 위에서 **계정의 남은 사용 한도**를 보는 포터블 도구입니다. Codex의 주간 한도와 선택한 경우 Claude Code의 5시간·주간 한도를 표시합니다.
 
-문서화된 [Codex App Server](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)의 `account/rateLimits/read`를 사용합니다. OpenAI의 공식 제품이나 공식 확장 프로그램은 아닙니다.
+[Windows x64 포터블 ZIP 다운로드](https://github.com/JooWon0712/codex-usage-overlay/releases/download/v1.2.0/codex-usage-overlay-windows-x64.zip) · [v1.2.0 릴리스와 검증 파일](https://github.com/JooWon0712/codex-usage-overlay/releases/tag/v1.2.0)
 
-| 실제 오버레이 · 라이트 | 실제 오버레이 · 다크 |
+## 미리보기
+
+| 상세형 | 간결형 |
 | --- | --- |
-| <a href="docs/screenshots/overlay-light.png"><img src="docs/screenshots/overlay-light.png" width="400" alt="Codex 세션 제목 아래의 라이트 오버레이"></a> | <a href="docs/screenshots/overlay-dark.png"><img src="docs/screenshots/overlay-dark.png" width="400" alt="Codex 세션 제목 아래의 다크 오버레이"></a> |
+| <a href="docs/screenshots/overlay-detailed.png"><img src="docs/screenshots/overlay-detailed.png" width="360" alt="Codex 주간 세션과 Claude Code 현재·주간 세션의 잔여율, 막대와 초기화 시각을 표시한 상세형 배지"></a> | <a href="docs/screenshots/overlay-compact.png"><img src="docs/screenshots/overlay-compact.png" width="387" alt="서비스별 요금제와 세션별 잔여율 및 초기화 시각을 세 줄로 표시한 간결형 배지"></a> |
 
-위 화면은 사용자가 촬영한 특정 시점의 예시입니다. 표시된 **주간 73%·Pro 100**은 현재 계정 상태를 실시간으로 보여 주는 값이 아닙니다.
+모든 이미지는 v1.2.0 앱이 예시 데이터로 렌더링한 화면입니다. 이미지를 눌러 원본 크기로 볼 수 있습니다.
 
 <details>
-<summary>설정 화면 보기 · 두 탭과 라이트/다크 테마</summary>
+<summary>설정 화면 · 오버레이와 표시 위치·테마</summary>
 
-| 라이트 · 오버레이 | 다크 · 오버레이 |
+| 라이트 | 다크 |
 | --- | --- |
-| <a href="docs/screenshots/settings-light-overlay.png"><img src="docs/screenshots/settings-light-overlay.png" width="400" alt="라이트 테마의 오버레이 설정 화면"></a> | <a href="docs/screenshots/settings-dark-overlay.png"><img src="docs/screenshots/settings-dark-overlay.png" width="400" alt="다크 테마의 오버레이 설정 화면"></a> |
-
-| 라이트 · 표시 위치·테마 | 다크 · 표시 위치·테마 |
-| --- | --- |
-| <a href="docs/screenshots/settings-light-position-theme.png"><img src="docs/screenshots/settings-light-position-theme.png" width="400" alt="라이트 테마의 표시 위치와 테마 설정 화면"></a> | <a href="docs/screenshots/settings-dark-position-theme.png"><img src="docs/screenshots/settings-dark-position-theme.png" width="400" alt="다크 테마의 표시 위치와 테마 설정 화면"></a> |
-
-설정 창 안의 **주간 96%·Plus는 고정된 더미 예시**입니다. 실제 계정의 한도나 요금제를 확인한 결과가 아니며 Codex 위에 떠 있는 실제 배지와 데이터가 분리돼 있습니다. 이미지를 누르면 원본을 볼 수 있습니다.
+| <a href="docs/screenshots/settings-light-overlay.png"><img src="docs/screenshots/settings-light-overlay.png" width="400" alt="라이트 테마에서 Claude Code 항목을 켠 오버레이 설정과 상세형 미리보기"></a> | <a href="docs/screenshots/settings-dark-overlay.png"><img src="docs/screenshots/settings-dark-overlay.png" width="400" alt="다크 테마에서 Claude Code 항목을 켠 오버레이 설정과 상세형 미리보기"></a> |
+| <a href="docs/screenshots/settings-light-position-theme.png"><img src="docs/screenshots/settings-light-position-theme.png" width="400" alt="라이트 테마의 표시 위치·테마 탭"></a> | <a href="docs/screenshots/settings-dark-position-theme.png"><img src="docs/screenshots/settings-dark-position-theme.png" width="400" alt="다크 테마의 표시 위치·테마 탭"></a> |
 
 </details>
 
-## 주요 기능
+## 시작하기
 
-- 실제 세션 제목 아래 또는 사이드바에 표시하고 위치를 보정합니다. 창 위치·크기·화면 배율에 맞춰 배치하며 배지 본문 클릭은 아래 앱으로 통과합니다.
-- 계정의 주간·5시간 한도, 마지막 성공 갱신 시각, 구독 요금제와 주간 초기화 날짜·D-day를 표시합니다. 대화 글자 수나 세션 토큰으로 계정 한도를 추정하지 않습니다.
-- Claude Code의 5시간·주간 한도를 같은 배지에 추가하고, 명령줄을 통해 주기적으로 자동 조회할 수 있습니다.
-- 조회 중·실패·오래된 값·확인 불가를 구분합니다. 주간 잔여율이 **15% 미만**이면 부족 문구와 색으로, 0%이면 소진 상태로 표시합니다.
-- 라이트 **뉴트럴잉크**, 다크 **뉴트럴차콜**, Codex/Windows 테마 따라가기와 배경 투명도 조절을 제공합니다.
-- 트레이 없는 일반 창 프로그램입니다. **X 또는 종료 버튼으로 완전히 종료**하며 최소화 중에도 Codex가 활성 상태이면 배지와 조회가 계속됩니다. 자동 시작·예약 작업은 등록하지 않습니다.
+**필요한 환경**은 Windows 10 또는 11 x64, .NET Framework 4.8, Node.js, Windows용 Codex 데스크톱 앱입니다. 한도를 조회할 Codex CLI는 ChatGPT 계정으로 로그인돼 있어야 합니다. 프로그램은 먼저 설정과 `PATH`의 `codex.exe`를 찾고, 경로가 없으면 Windows에 등록된 `OpenAI.Codex` 앱 패키지의 실행 파일을 찾습니다. 개발과 CI는 Node.js 24 기준입니다.
 
-## 요구 사항
+1. [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에서 `codex-usage-overlay-windows-x64.zip`을 받아 원하는 폴더에 전부 풉니다.
+2. 폴더 안에서 `UsageOverlay.exe`를 실행하고 Codex 창으로 돌아갑니다. 기본 위치는 세션 제목 아래입니다.
+3. 설정의 **앱에서 확인**을 누르면 설정 창을 최소화하고 Codex로 돌아갑니다. **X** 또는 **종료**를 누르면 프로그램과 조회를 종료합니다.
 
-- Windows 10/11 x64 및 .NET Framework 4.8
-- Node.js와 ChatGPT 계정으로 인증된 Codex CLI의 `codex.exe`
-- 현재 창 인식 대상: `OpenAI.Codex` MSIX 패키지의 Codex 데스크톱 앱
-- 개발 검사에는 Node.js 18 이상 필요
+ZIP을 푼 폴더를 그대로 사용합니다. 실행 중에는 작업 표시줄에서 설정 창을 복원할 수 있습니다. 여러 사본을 실행하면 기존 설정 창이 복원됩니다.
 
-Node와 Codex는 기존 설치를 사용하며 포터블 폴더에 포함되지 않습니다. 프로그램이 실행 구성요소를 자동으로 내려받거나 설치하지 않습니다.
+### 버전 업데이트와 경로 설정
 
-## 포터블 실행과 업데이트
+업데이트하거나 폴더를 옮길 때는 먼저 **X**로 종료합니다. 새 버전을 풀어 폴더 전체를 교체하세요. 사용자 설정은 `%LOCALAPPDATA%\CodexUsageOverlay\settings.json`에 저장되어 유지됩니다. `runtime-paths.json`을 직접 수정했다면 그 파일도 새 폴더로 옮깁니다.
 
-정식 버전 태그의 빌드·검사·출처 증명이 모두 성공하면 [GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에 포터블 ZIP을 자동 게시합니다. 공개된 버전과 파일은 Release 목록에서 확인하세요. [Actions](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)의 성공한 실행에서 **Artifacts**를 받거나 아래 개발 절차로 직접 빌드할 수도 있습니다.
+`runtime-paths.json`의 `Node`와 `Codex`는 실행 파일의 절대 경로 또는 EXE 폴더 기준 상대 경로를 지원합니다. 각각 지정 경로를 찾을 수 없으면 `PATH`에서 다시 찾습니다. 실행 중 Codex 앱 업데이트로 사용하던 경로가 사라지면 자동 조회 또는 **지금 갱신** 때 새 경로를 확인합니다.
 
-Release의 배포 자산은 `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`, `codex-usage-overlay.intoto.jsonl` 세 개입니다. EXE는 ZIP 안에 포함되며 별도 자산으로 게시하지 않습니다. 전체 ZIP을 풀어 사용하며 Node와 인증된 Codex CLI는 PC에 별도로 준비해야 합니다.
+## 배지와 설정
 
-`windows-x64-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에는 전체 포터블 폴더 `codex-usage-overlay/`, 배포 ZIP `codex-usage-overlay-windows-x64.zip`, `SHA256SUMS.txt`가 들어가며 보관 기간은 30일입니다. Actions 화면에서 받는 아티팩트 ZIP은 이 파일들을 담은 포장 파일이며 그 안의 배포 ZIP과 구분합니다. `dist/` 자체는 Git에서 추적하지 않습니다.
-
-1. `codex-usage-overlay-windows-x64.zip`을 원하는 폴더에 압축 해제합니다.
-2. 폴더 안의 `UsageOverlay.exe`를 두 번 눌러 실행합니다. 일반 실행에는 인수가 필요하지 않습니다.
-3. 업데이트하거나 위치를 옮길 때는 **X로 완전히 종료한 뒤 전체 폴더를 교체하거나 이동**합니다.
-
-`UsageOverlay.exe`, `worker.mjs`, `probe.mjs`, `usage-state.mjs`, `runtime-paths.json`, `claude-usage-probe.mjs`, `claude-statusline.mjs`와 `claude-code-overlay/`를 압축을 풀었을 때의 구성대로 유지하세요. `Setup.exe`나 설치 스크립트 실행, 고정 경로 설치, 관리자 권한은 필요하지 않습니다.
-
-`runtime-paths.json`은 Node/Codex 실행 파일의 절대 경로 또는 EXE 폴더 기준 상대 경로를 지원합니다. 지정한 실행 파일이 없으면 `PATH`에서 `node.exe`·`codex.exe`를 찾습니다. Codex CLI를 찾지 못하면 Windows에 현재 사용자용으로 등록된 Codex 데스크톱 x64 패키지에서 찾습니다. 다른 PC에서는 그 PC의 Node/Codex 설치·계정 인증·경로 설정이 필요합니다. 실행 중 사용하던 Codex 파일이 사라지면 자동 조회나 **지금 갱신**에서 새 경로를 찾아 연결합니다.
-
-설정은 `%LOCALAPPDATA%\CodexUsageOverlay\settings.json`에 저장하므로 폴더를 옮기거나 교체해도 유지됩니다. 여러 사본을 열면 새 인스턴스 대신 기존 설정 창을 복원합니다.
-
-## 설정과 표시 동작
-
-설정 창은 **오버레이**, **표시 위치·테마** 두 탭을 사용합니다.
+**오버레이** 탭에서 표시 항목을 고르고, **표시 위치·테마** 탭에서 배치와 색을 조정합니다.
 
 | 설정 | 동작 |
 | --- | --- |
-| 배지 형식 | 기본 상세형. 넉넉한 여백에 상태, 잔여율, 막대와 선택한 부가 정보를 표시. 간결형은 한도마다 잔여율과 짧은 초기화 시각 또는 조회 상태를 한 줄에 표시 |
-| 구독 요금제 | 기본 켜짐. Codex와 Claude Code의 확인된 요금제를 상세형은 서비스 이름 옆에, 간결형은 이름 아래에 표시 |
-| 주간 초기화 날짜·시각 | Codex 주간 세션의 실제 초기화 일정을 행 오른쪽에 표시 |
-| 초기화 D-day | 상세형에서 행 오른쪽에 표시. 초기화 시각과 개별 설정 가능 |
-| Claude Code → 한도 표시 | 기본 꺼짐. 실제 배지와 설정 미리보기에 Claude Code 항목을 추가하고 자동 조회를 켬 |
-| 배경 투명도 | 0~100%, **10% 단위**. 기본 0%는 불투명 |
-| 표시 위치 | 기본 **세션 제목 아래**, 또는 **사이드바** |
-| 테마 | Codex 따라가기 / Windows 따라가기 / 라이트 / 다크 |
+| 배지 형식 | **상세형**은 행 아래의 잔여율 막대와 초기화 카운트다운을 표시합니다. **간결형**은 한도마다 한 줄에 잔여율과 초기화 시각을 표시합니다. 실제 배지 오른쪽 위 화살표로도 전환할 수 있습니다. |
+| 세션 이름 | 두 형식 모두 Codex와 Claude Code의 주간 한도는 **주간 세션**, Claude Code의 5시간 한도는 **현재 세션**으로 표시합니다. |
+| 구독 요금제 | 기본 켜짐. 확인된 요금제를 상세형은 서비스 머리글에, 간결형은 서비스 이름 아래에 표시합니다. |
+| 주간 초기화 날짜·시각 | Codex 주간 세션의 초기화 일정을 행 오른쪽에 표시합니다. |
+| 초기화 D-day | 상세형의 Codex 주간 세션에서 날짜·시각 표시와 별도로 켜고 끌 수 있습니다. |
+| Claude Code → 한도 표시 | 기본 꺼짐. 켜면 두 한도를 추가하고 자동 조회를 시작합니다. |
+| 표시 위치 | **세션 제목 아래** 또는 **사이드바**를 선택하고 가로·세로 위치를 보정합니다. |
+| 테마·투명도 | **Codex 따라가기**, **Windows 따라가기**, **라이트**, **다크**를 지원합니다. 배경 투명도는 0~100%를 10% 단위로 조정합니다. |
 
-실제 배지 상단 오른쪽의 화살표를 클릭하면 배지를 접어 간결형으로 바꾸거나 펼쳐 상세형으로 돌아갈 수 있습니다. 두 형식 모두 맨 윗줄에 화살표만 표시합니다. 선택한 형식은 설정에도 저장됩니다.
+초기화 정보는 배지 오른쪽에 정렬합니다. 예를 들어 상세형에서 `11월 25일 17:58 (D-7)`을 표시하고, 오늘 초기화되는 주간 한도는 `D-DAY · 0h 10m`처럼 남은 시간도 보여 줍니다. 긴 초기화 정보는 상세형의 오른쪽에서 두 줄로 표시될 수 있습니다. 초기화 시각을 확인할 수 없으면 조회 상태를 표시합니다.
 
-배지는 Windows에 등록된 Codex·Claude 데스크톱 앱의 아이콘을 각 서비스 이름 앞에 표시합니다. 설치 패키지에서 아이콘을 읽을 수 없으면 서비스 이름만 표시합니다.
+서비스 아이콘은 Windows에 등록된 데스크톱 앱에서 가져올 수 있을 때 표시합니다. 화살표 영역을 제외한 배지 본문은 클릭을 아래 창으로 통과시킵니다. 설정 창이 전경일 때도 표시할 Codex 창이 있으면 설정 변경 결과를 바로 볼 수 있습니다. 다른 앱이 전경이거나 Codex가 최소화됐을 때는 배지를 숨깁니다.
 
-상세형은 세션 이름과 잔여율을 행 왼쪽에 맞추고, 초기화 아이콘과 `11월 25일 17:58 (D-7)` 같은 시각·카운트다운을 같은 행 오른쪽에 표시합니다. 초기화 정보가 길면 오른쪽에서 두 줄로 표시합니다. Codex와 Claude Code의 주간 한도는 `주간 세션`이며 Claude Code의 5시간 한도는 `현재 세션`입니다. 각 행 아래에 전체 폭의 막대를 표시합니다. Codex 주간 잔여율이 15% 미만이면 한도 부족 문구를 표시하고 파란 막대를 로즈색으로 바꿉니다.
+미리보기는 프로그램 시작 시각을 기준으로 만든 고정 예시입니다. 실제 배지는 해당 계정의 조회 값을 표시합니다. 설정은 변경할 때 자동으로 저장됩니다.
 
-간결형도 `현재 세션`과 `주간 세션`을 사용하고 잔여율의 시작 위치를 맞춥니다. 초기화 아이콘 뒤에 오늘이면 `17:58`, 다른 날이면 `11월 22일 17:58`처럼 표시합니다. Codex 초기화 시각은 **주간 초기화 날짜·시각**으로 켜고 끌 수 있습니다.
+## Claude Code 한도 조회
 
-상세형에서 0%는 빈 막대로 표시합니다. 100% 투명에서도 글자, 필요한 그림자와 유효한 막대가 보입니다. 고대비 모드는 Windows의 시스템 색을 사용합니다. 라이트는 투명도 0~40%에서 어두운 글자, 50~100%에서 밝은 글자로 전환합니다. 설정 변경은 바로 반영하고 약 0.4초 뒤 자동 저장하며 종료 전에도 저장합니다.
+1. Windows용 Claude Code CLI를 설치하고 Claude 구독 계정으로 로그인합니다. [Windows 설치 안내](https://code.claude.com/docs/en/setup#install-on-native-windows)
+2. 오버레이 설정에서 **Claude Code → 한도 표시**를 켭니다. CLI의 구조화된 `/usage`로 **현재 세션**과 **주간 세션**을 조회합니다. v1.2.0의 자동 조회기는 Windows 네이티브 CLI 2.1.273 이상의 2.x 버전을 대상으로 합니다. [Claude Code 사용량 보고서](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
+3. Claude 항목 아래에서 마지막 갱신 상태나 로그인 안내를 확인합니다. **조회 기록**과 **지금 갱신** 버튼은 Codex 조회에 사용합니다.
 
-설정 미리보기는 시작 시각 기준의 96%·Plus 예시이며 이후 만료되거나 실제 계정 조회 실패 상태로 바뀌지 않습니다. 일반 테마에서는 명시된 다크 예시 배경을 사용하므로 실제 Codex 화면 위 배지와 비쳐 보이는 색이 다를 수 있습니다.
+기능을 켜면 즉시 확인하고, 일반적으로 조회 완료 후 **15분 뒤** 다시 확인합니다. 오버레이가 실행 중이면 Codex 창 활성 여부와 별개로 동작합니다. 절전 복귀 때 조회 예정 시각이 지났으면 다시 확인하고, 실패가 이어지면 간격을 최대 60분까지 늘립니다. 요금제는 조회 전후의 CLI 인증 상태에서 같은 계정과 같은 값을 확인했을 때 표시합니다.
 
-제목 아래에서는 배지 왼쪽을 제목 메뉴의 폴더 아이콘 위치에 맞춥니다. 제목 메뉴를 읽을 수 없는 화면에서는 제목 텍스트 기준으로 배치합니다. 본문 왼쪽 구분선과는 최소 12 DIP 간격을 두며 **기본 위치 보정**으로 가로 위치를 조절할 수 있습니다. 세로 간격의 기본값은 6 DIP입니다. 사이드바의 기본 하단 여백은 16 DIP이며, 저장된 여백은 **세로: 창 아래 여백**에서 바꿀 수 있습니다.
+CLI는 `%USERPROFILE%\.local\bin\claude.exe`와 `PATH`에서 찾습니다. 다른 위치를 사용하려면 환경 변수 `CODEX_USAGE_OVERLAY_CLAUDE`에 Windows용 `claude.exe`의 절대 경로를 지정하세요.
 
-두 설정 탭 모두 설정 창이 전경이면 Codex 창 위에 **실제 계정 데이터의 배지**를 보여 줍니다. 설정 창이 배지를 덮으면 옆으로 옮겨 확인하세요. **앱에서 확인**은 설정 창을 최소화하고 Codex로 돌아갑니다.
+<details>
+<summary>Claude 요청 완료 뒤 갱신하기</summary>
 
-일반 사용에서는 Codex가 전경일 때 표시합니다. Codex가 최소화·숨김 상태이거나 다른 앱이 전경이면 숨깁니다. 설정 창 최소화는 프로그램 종료가 아니며 작업 표시줄에서 복원할 수 있습니다. 제목 표시줄의 전용 앱 아이콘은 시스템 트레이 등록과 관계없습니다.
-
-## Claude Code 한도 표시
-
-**오버레이** 탭의 **Claude Code** 구역에서 **한도 표시**를 켜면 최근 수신 상태와 두 한도가 표시됩니다. 상세형에서 `현재 세션` 오른쪽에는 `18:18 (0h 20m)`, `주간 세션` 오른쪽에는 `11월 22일 17:58 (D-4)`처럼 초기화 시각과 카운트다운을 표시합니다. 현재 세션의 초기화가 다른 날이면 날짜도 표시합니다. 잔여율만 확인되면 `초기화 시각 확인 불가`로 표시합니다. 간결형은 5시간·주간을 각각 한 줄로 표시하고, 해당 기간의 유효한 초기화 시각을 오른쪽에 표시합니다. 체크박스 아래에서 조회 방식, 최근 갱신 상태, CLI를 찾지 못했거나 로그인이 필요할 때의 다음 조치를 확인할 수 있습니다. 설정 미리보기는 5시간 76%·주간 59%의 고정 예시를 사용합니다.
-
-### 자동 조회
-
-구조화된 `/usage` 보고서를 지원하는 공식 Windows Claude Code CLI를 설치하고, Claude Code에서 조회할 Claude 구독 계정으로 로그인하세요. CLI 2.1.326의 구독 로그인에서 두 한도를 확인했습니다. 오버레이 실행 중에는 별도의 Claude Desktop 창이나 터미널 창 없이 CLI의 `/usage` 명령으로 조회합니다. 조회 자체의 모델 입출력 토큰은 0개입니다. [Claude Code 사용량 보고서](https://code.claude.com/docs/en/agent-sdk/typescript#sdkusagereport)
-
-Claude Code 요금제는 자동 조회 전후의 `auth status --json` 응답에서 같은 계정과 같은 `subscriptionType`을 확인했을 때 표시합니다. CLI에서 확인된 기본 요금제 이름을 사용하며, 응답에 없거나 알 수 없는 값이면 표시를 생략합니다. [Claude Code CLI 명령](https://code.claude.com/docs/en/cli-reference)
-
-오버레이는 시작할 때 한 번 조회하고 조회 완료 후 **15분 뒤** 다시 조회합니다. 절전 복귀 시 조회 시각이 지났으면 한 번 처리합니다. 조회가 연속 실패하면 다음 조회까지의 간격을 늘립니다. 자동 조회 결과는 `%LOCALAPPDATA%\CodexUsageOverlay\claude-usage-auto.json`에 저장합니다. 배지의 수신 시각은 로컬에서 값을 받은 시각입니다.
-
-CLI는 `%USERPROFILE%\.local\bin\claude.exe`와 `PATH`에서 찾습니다. 다른 위치의 공식 실행 파일을 지정하려면 `CODEX_USAGE_OVERLAY_CLAUDE`에 `claude.exe`의 절대 경로를 넣으세요.
-
-### 비대화형 Claude 요청 직후 갱신
-
-실제로 Claude에 요청하는 자동화에서는 포터블 폴더의 `claude-usage-probe.mjs --run` 뒤에 기존 Claude Code 명령의 인수를 전달합니다. 예시의 `-p '요청 내용'`을 원래 전달할 인수로 바꾸세요.
+비대화형 Claude Code 호출을 자동화하고 있다면 포터블 폴더의 래퍼에 기존 `-p` 또는 `--print` 인수를 넘깁니다.
 
 ```powershell
 node 'C:\Apps\Codex Usage Overlay\claude-usage-probe.mjs' --run -p '요청 내용'
 ```
 
-이 명령은 원래 Claude 요청을 실행하고 결과와 종료 코드를 돌려줍니다. 완료 신호를 받은 오버레이는 `/usage`를 즉시 다시 실행하고, 새 조회가 끝나면 정기 조회 간격을 다시 계산합니다.
+래퍼는 Claude Code 요청의 출력과 종료 코드를 그대로 전달하고, 요청이 끝나면 오버레이에 조회 신호를 보냅니다. Claude 한도 표시가 켜져 있을 때 다음 조회에 반영됩니다.
 
-### 기존 연동에서 받기
+</details>
 
-Claude Desktop 플러그인과 상태줄은 기존 `%LOCALAPPDATA%\CodexUsageOverlay\claude-usage.json`에 사용률, 초기화 시각과 로컬 수신 시각을 기록합니다. 자동 조회 기록이 아직 없거나 Claude Code CLI를 찾지 못했을 때 오버레이에서 기존 연동 값을 볼 수 있습니다. 이 파일을 쓰는 플러그인이나 상태줄은 하나만 사용하세요.
+<details>
+<summary>Claude Desktop 플러그인과 CLI 상태줄로 연동하기</summary>
 
-#### Claude Desktop Code 탭에서 받기
+자동 조회 기록이 아직 없거나 CLI를 찾지 못한 경우에는 기존 연동이 전달한 데이터를 읽을 수 있습니다. 자동 조회는 `claude-usage-auto.json`, 플러그인과 상태줄은 `claude-usage.json`을 `%LOCALAPPDATA%\CodexUsageOverlay`에 기록합니다. 기존 연동 파일을 쓰는 방식은 하나만 선택하세요.
 
-ZIP에 포함된 `claude-code-overlay/` 플러그인은 로컬 Code 세션이 시작되거나 Claude Code에서 한도 변경을 알릴 때 이미 알려진 값을 전달합니다. 시작 시 한도 데이터가 아직 없으면 Claude Code가 값을 제공한 뒤에 표시됩니다. Windows의 Claude Desktop 로컬 Code 세션에서 내장 Claude Code 2.1.286 이상이 필요합니다. WSL 세션에서는 플러그인을 사용할 수 없습니다. [Claude Code Mods 지원 환경](https://code.claude.com/docs/en/plugins/mods#where-mods-run)
-
-처음 설치할 때만 PowerShell에서 Claude Code의 플러그인 관리 명령을 실행합니다. `claude`를 사용할 수 있는 환경에서 예제의 폴더 경로를 ZIP을 풀어 놓은 실제 경로로 바꾸세요.
+**Claude Desktop Code 탭**에서 받으려면 예제 경로를 실제 포터블 폴더에 맞춘 뒤 동봉 플러그인을 등록합니다.
 
 ```powershell
 claude plugin marketplace add 'C:\Apps\Codex Usage Overlay\claude-code-overlay' --scope user
 claude plugin install usage-overlay-bridge@codex-usage-overlay --scope user
 ```
 
-Claude Desktop에서 새 로컬 **Code** 세션을 열거나 기존 세션의 입력창에 `/reload-plugins`를 입력합니다. 설치 후에는 별도 Claude CLI 세션을 열어 둘 필요가 없습니다. 개인 플러그인 `usage-band` 0.1.1로 이미 한도를 전달받고 있다면 같은 파일을 그대로 읽으므로 이 설치를 건너뛰어도 됩니다. [플러그인 설치 명령](https://code.claude.com/docs/en/plugins/cli-reference#plugin-marketplace-add) · [Desktop 세션에서 플러그인 다시 불러오기](https://code.claude.com/docs/en/plugins/cli-reference#sessions-without-an-interactive-terminal)
+Claude Desktop의 새 로컬 Code 세션을 열거나 `/reload-plugins`로 다시 불러옵니다. 이 플러그인은 Claude가 이미 제공한 한도 정보를 전달합니다. v1.2.0 번들은 Windows 네이티브 로컬 Code 세션의 CLI 2.1.286 이상을 대상으로 합니다. 포터블 폴더를 옮기면 기존 마켓플레이스를 제거하고 새 경로로 등록합니다. [Claude Code 플러그인 명령](https://code.claude.com/docs/en/plugins/cli-reference) · [Mods 실행 환경](https://code.claude.com/docs/en/plugins/mods#where-mods-run)
 
-포터블 폴더를 옮겨 동봉 플러그인의 등록 경로를 바꾸려면 `claude plugin marketplace remove codex-usage-overlay --scope user`로 기존 등록을 제거한 뒤 새 경로로 위 두 명령을 다시 실행합니다. [로컬 마켓플레이스 제거](https://code.claude.com/docs/en/plugins/cli-reference#plugin-marketplace-remove)
+**Claude Code CLI 상태줄**을 사용한다면 `%USERPROFILE%\.claude\settings.json`의 `statusLine`에 동봉한 `claude-statusline.mjs`를 연결합니다. 기존 상태줄이 있으면 기존 출력을 보존하는 방식으로 연결하고, 새 상태줄을 구성하는 경우에는 [사용안내](사용안내.txt)의 Git Bash·PowerShell 예시를 참고하세요. [Claude Code 상태줄 문서](https://code.claude.com/docs/en/statusline)
 
-#### Claude Code CLI 상태줄에서 받기
+</details>
 
-터미널에서 Claude Code를 쓰는 경우에는 동봉된 `claude-statusline.mjs`로 공식 `statusLine` JSON에서 같은 한도를 받아올 수 있습니다. 지원되는 구독에서 첫 API 응답 이후 한도가 제공될 수 있으며 각 기간의 값이 빠질 수 있습니다. [Claude Code 상태줄 문서](https://code.claude.com/docs/en/statusline)
+## 조회나 배치에 문제가 있을 때
 
-Claude Code 사용자 설정 `%USERPROFILE%\.claude\settings.json`에 아래 `statusLine` 항목을 직접 추가합니다. 두 경로를 PC의 실제 `node.exe`와 포터블 폴더 안 스크립트의 절대 경로로 바꾸고 `/`를 사용하세요. 다른 설정은 그대로 두고, 기존 `statusLine` 명령이 있는 경우에는 아래 예제로 덮어쓰지 마세요. 함께 사용하려면 원래 표준 입력을 양쪽 명령에 전달하고 기존 명령의 출력을 유지하는 래퍼가 필요합니다.
-
-Git Bash가 설치된 Windows의 설정 예시입니다.
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "'C:/Program Files/nodejs/node.exe' 'C:/Apps/Codex Usage Overlay/claude-statusline.mjs'"
-  }
-}
-```
-
-Git Bash가 없어 Claude Code가 PowerShell을 사용한다면 `command` 앞에 호출 연산자 `&`를 붙입니다. [Windows 상태줄 설정](https://code.claude.com/docs/en/statusline#windows-configuration)
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "& 'C:/Program Files/nodejs/node.exe' 'C:/Apps/Codex Usage Overlay/claude-statusline.mjs'"
-  }
-}
-```
-
-Overlay의 표시 옵션을 끄면 배지와 미리보기에서 Claude Code 항목이 사라지고 오버레이의 자동 조회가 꺼집니다. 기존 연동 파일 갱신을 종료하려면 사용 중인 플러그인을 비활성화하거나 상태줄 설정을 복원하세요. 상태줄 연동을 사용하면서 포터블 폴더를 옮겼다면 상태줄 명령의 스크립트 경로도 바꿉니다.
-
-## 데이터와 갱신 상태
-
-Codex 한도는 **Codex가 전경일 때 60초 간격**으로 조회합니다. 설정 중 배지가 보인다는 이유로 추가 조회하지 않으며 수동 갱신은 최소 5초 간격입니다. 마지막 성공으로부터 3분이 지나면 오래된 값으로 구분합니다.
-
-| 상태 | 표시 |
+| 증상 | 확인할 곳 |
 | --- | --- |
-| 정상 | 실제 잔여율과 성공 갱신 시각 |
-| 조회 중 | 연결 중 또는 갱신 중, 이전 관찰이 있으면 함께 표시 |
-| 실패·오래된 값 | 이전 값임을 표시하고 마지막 성공 시각 유지 |
-| 성공값 없음 | 확인 불가. 0%나 100%로 대체하지 않음 |
+| 배지가 보이지 않음 | Codex 창을 활성화하고 **앱에서 확인**을 눌러 보세요. 제목 아래 배치에서 제목을 읽을 수 없거나 창이 너무 작으면 창을 넓히거나 **사이드바**로 전환합니다. |
+| Codex 한도를 확인할 수 없음 | 설정 상단의 **Codex CLI**와 **조회 기록**에서 실행 경로와 최근 결과를 확인합니다. 실패 때 표시되는 **문제 확인**에는 원인과 시각이 표시됩니다. 경로·로그인을 확인한 뒤 **지금 갱신**으로 재시도합니다. |
+| Claude Code 한도를 확인할 수 없음 | **한도 표시**가 켜져 있는지 확인합니다. 항목 아래에 **CLI 확인 불가** 또는 **로그인 필요**가 표시되면 설치 경로와 구독 로그인을 확인합니다. |
+| 배지의 색이 기대와 다름 | **표시 위치·테마**에서 테마를 직접 선택할 수 있습니다. Codex 테마 설정을 읽을 수 없으면 Windows 테마를 사용합니다. |
+| 표시된 계정이나 요금제가 예상과 다름 | 오버레이는 연결된 CLI 계정의 한도를 표시합니다. Codex 데스크톱과 CLI에서 사용하는 ChatGPT 계정을 확인하세요. |
 
-실제 조회 실패 때만 **문제 확인** 버튼을 제공하며 원인·마지막 성공·시도 시각·다음 조치를 펼쳐 볼 수 있습니다. 정상·최초 연결·단순 만료에는 나타나지 않고 복구되면 닫힙니다.
+Codex는 전경에서 60초 간격으로 조회합니다. 마지막 성공 후 3분이 지나면 이전 값으로 표시합니다. 조회 중, 실패, 이전 값, 확인 불가를 구분하고, 주간 잔여율이 **15% 미만**이면 부족을, **0%**이면 소진을 표시합니다. 조회 기록에는 이번 실행에서 완료한 최근 30건의 Codex 조회가 쌓입니다.
 
-설정 창 상단에 **Codex CLI** 상태가 표시됩니다. **조회 기록**을 열면 선택된 실행 경로와 완료된 자동·수동 조회의 시각, 성공·실패와 잔여 한도를 확인할 수 있습니다. 최근 30건이 실행 중 메모리에 쌓입니다. **버전 정보**에서 현재 버전과 변경 내역을 확인할 수 있습니다.
+제목 아래 배치는 Windows 접근성에서 읽을 수 있는 세션 제목이나 제목 메뉴를 기준으로 합니다. Codex 앱 업데이트로 접근성 구조가 달라지면 배치에 영향을 줄 수 있습니다. [Codex 기본 사용량 표시 조사](docs/native-usage-indicator.md)
 
-Codex의 주간 초기화는 공식 응답의 **10080분 한도**에 있는 유효한 초기화 시각을 사용합니다. 상세형에서 Codex와 Claude Code의 주간 한도는 Windows 표시 시간대의 달력 날짜를 기준으로 내일이면 `D-1`, 오늘이면 `D-DAY · 0h 10m`처럼 남은 시간을 함께 표시합니다. 초기화 시각이 지나면 갱신이 필요하다고 안내하고, 데이터가 없거나 충돌하면 확인 불가로 표시합니다. 실패·갱신 중·오래된 값의 일정은 이전 일정으로 구분합니다.
+## 사용량 데이터
 
-요금제는 같은 공식 응답의 Codex 버킷 `planType`을 사용하며 별도 조회하지 않습니다. Pro 등급 표시명은 다음과 같습니다.
+Codex의 계정 한도는 `account/rateLimits/read`로 조회합니다. 주간 초기화는 응답에서 확인된 10080분 한도의 초기화 시각을 사용합니다. [Codex App Server 계정 한도 문서](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
 
-| 응답 값 | 표시명 |
-| --- | --- |
-| `prolite` | Pro 100 |
-| `pro` | Pro 200 |
-| `promax` | Pro 500 |
+Codex의 `planType` 값 `prolite`, `pro`, `promax`는 각각 **Pro 100**, **Pro 200**, **Pro 500**으로 표시합니다. 숫자는 배지에 쓰는 등급 이름입니다. 계정 변경 알림을 받으면 이전 Codex 한도와 요금제를 지웁니다.
 
-숫자는 등급 표시명이며 원화 결제 금액이 아닙니다. Free·Go·Plus·Team·Business·Enterprise·Edu는 이름으로, 다른 검증된 특수 코드는 `요금제: edu_plus`처럼 표시합니다. 값이 없거나 지원하지 않으면 확인 불가이며 실패·갱신 중·만료에는 `이전 Pro 100`처럼 구분합니다. 계정 변경 알림 때는 이전 한도와 요금제를 지웁니다.
-
-조회 대상은 **연결된 Codex CLI 계정**이며 데스크톱 앱과 같은 계정이라고 보장하지 않습니다. 프로그램이 인증 토큰 파일을 직접 읽거나 복사하지 않고 Codex 사용량과 계정 식별자를 디스크에 캐시하지 않습니다. 결제 금액·청구 주기·이메일·인증 정보는 표시하지 않으며 대화 생성·모델 추론·한도 초기화 요청도 하지 않습니다.
-
-## 호환성과 제한
-
-- 제목 아래 배치는 Windows UI Automation으로 실제 제목과 헤더를 읽습니다. Codex의 본문 제목 영역에서 문서 제목과 일치하는 텍스트나 세션 제목 메뉴 버튼을 찾습니다. 헤더와 도구 모음의 접근성 구조에 의존하므로 Codex 업데이트 후 재검증이 필요합니다. 제목이 없거나 모호하거나 접근성 읽기가 실패하면 숨기고 상태를 표시합니다. 사이드바도 선택할 수 있습니다.
-- 배지 전체를 넣을 공간이 없으면 `no_space`로 숨깁니다. 실제 혼합 DPI 다중 모니터·가상 데스크톱·계정 전환의 전체 동작은 추가 검증이 필요합니다. 별도 데스크톱 프로세스의 계정 전환을 즉시 감지한다고 보장하지 않습니다.
-- Codex 테마 따라가기는 로컬 `config.toml`의 저장 형식에 의존하는 읽기 기능이며 공식 테마 동기화 API가 아닙니다. 읽을 수 없으면 Windows 테마로 대체하며 수동 선택도 제공합니다.
-- Codex의 기본 사용량 아이콘 감지와 그에 따른 자동 숨김·이동, 동반 실행 런처, 자동 업데이트, 설치 프로그램은 구현하지 않았습니다. 프로그램이 Codex 파일이나 자동 시작 설정을 변경하지 않습니다.
+화면 표시 설정과 Claude 조회 결과는 Windows 사용자 데이터 폴더에 저장합니다. Claude 자동 조회 기록에는 사용률·초기화 시각, 갱신 상태와 계정 변경 확인용 해시가 들어갑니다. Codex의 조회 기록은 프로그램이 실행되는 동안 메모리에 보관합니다.
 
 ## 개발과 검증
 
-저장소 루트의 PowerShell에서 실행합니다. `build.ps1`은 Windows의 기존 C# 컴파일러를 사용합니다. 배포용 `-PortableRuntimePaths` 옵션은 `runtime-paths.json`에 `node.exe`·`codex.exe`만 기록하므로 컴파일할 때 Codex 설치나 계정 인증이 필요하지 않습니다. 프로그램을 사용할 때는 요구 사항의 Node/Codex 환경이 필요합니다. 옵션을 생략한 로컬 빌드는 종전처럼 `PATH`에서 찾은 실행 파일의 절대 경로를 기록합니다.
+저장소 루트의 PowerShell에서 실행합니다. `-PortableRuntimePaths`는 배포용 실행 경로를 파일 이름으로 기록합니다. 개발 검사와 화면 렌더링에는 예시 데이터를 사용합니다.
 
 ```powershell
 .\build.ps1 -PortableRuntimePaths
+node --check claude-code-overlay/hooks/register.js
 node --test probe.test.mjs worker.test.mjs claude-statusline.test.mjs claude-usage-probe.test.mjs tools/release.test.mjs
-.\.build\UsageOverlay.exe --self-test .build\geometry-test.json
 .\package.test.ps1
-.\package.ps1 -PortableRuntimePaths
+
+$exe = Join-Path $PWD '.build\UsageOverlay.exe'
+$report = Join-Path $PWD '.build\self-test.json'
+$run = Start-Process -FilePath $exe -ArgumentList @('--self-test', ('"{0}"' -f $report)) -WindowStyle Hidden -Wait -PassThru
+if ($run.ExitCode -ne 0) { throw "자체 검사 실패 ($($run.ExitCode))" }
 ```
 
-생성 위치는 `.build/UsageOverlay.exe`, `dist/codex-usage-overlay/`, `dist/codex-usage-overlay-windows-x64.zip`입니다. 패키징할 파일이 실행 중이라 잠겨 있으면 교체를 중단합니다. 생성물과 PC별 실행 경로 설정은 Git에서 제외됩니다.
+포터블 배포물이 필요할 때 `.\package.ps1 -PortableRuntimePaths`를 실행하면 `dist\codex-usage-overlay\`와 배포 ZIP을 생성합니다. 대상 폴더의 EXE가 실행 중이면 교체를 중단합니다. 예시 PNG는 `.\.build\UsageOverlay.exe --render-samples .build\samples`로 생성합니다.
 
-계정 조회 없이 예시 PNG를 만들려면 다음 모드를 사용합니다. 실제 계정·조회 worker·사용자 설정 쓰기를 사용하지 않습니다.
+v1.2.0 준비 과정에서 **자체 검사 662개, Node 검사 60개, 패키징 검사 25개**가 통과했습니다. GitHub에서는 Windows Server 2022와 Node.js 24로 빌드한 뒤 출처 증명을 생성하고 검증했습니다. [v1.2.0 Actions 실행](https://github.com/JooWon0712/codex-usage-overlay/actions/runs/44315586220) · [이전 버전 검증 기록](docs/verification-history.md)
 
-```powershell
-.\.build\UsageOverlay.exe --render-samples .build\samples
-```
+## 릴리스 파일 검증
 
-**과거 0.6.18의 C# 자체 검사 501개가 통과**했습니다. Pro 세 표시명, 나머지 요금제 유지와 실패·갱신 중·만료 때의 이전 값 표시를 확인했습니다. 해당 변경에서 Node 검사는 다시 실행하지 않았고 일반 Overlay 실행·실제 계정 조회·새 화면 렌더링도 수행하지 않았습니다. Node 검사 31개 통과와 PNG 384개 렌더링은 **0.6.17의 기록**이며 이 수치는 1.0.0 새 빌드의 검증 결과가 아닙니다. 버전별 근거와 실제 확인 범위는 [검증 기록](docs/verification-history.md)에 보존했습니다.
+[GitHub Releases](https://github.com/JooWon0712/codex-usage-overlay/releases)에서 포터블 ZIP, `SHA256SUMS.txt`, `codex-usage-overlay.intoto.jsonl`을 받을 수 있습니다. 체크섬으로 파일 일치 여부를 확인하고, GitHub CLI로 ZIP과 내부 EXE가 어느 태그·커밋·워크플로에서 빌드됐는지 검증할 수 있습니다. Windows의 Authenticode 서명과 별도로 확인하는 빌드 출처 증명입니다. [GitHub 출처 증명 문서](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
 
-**1.0.2 후보 빌드는 C# 자체 검사 503개, Node 검사 47개, 패키징 검사 14개를 통과**했습니다. 테스트용 프로세스로 기존 경로가 사라진 상황을 재현해 자동·수동 재연결과 새 경로 및 조회 결과 표시를 확인했습니다.
-
-## GitHub 빌드 출처 증명과 릴리스
-
-[워크플로](.github/workflows/windows-build.yml)는 Windows Server 2022·Node.js 24에서 Node 검사, 패키징 검사와 C# 자체 검사를 수행하고 포터블 파일을 빌드하도록 구성돼 있습니다. 실제 계정 조회나 일반 앱 실행은 사용하지 않습니다. 각 실행의 성공 여부와 대상 커밋은 [Actions 결과](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)에서 확인하세요.
-
-| 실행 조건 | 빌드·검사 | EXE·배포 ZIP 출처 증명 | Release 게시 |
-| --- | --- | --- | --- |
-| `main` 대상 Pull Request | 수행 | 생성하지 않음 | 하지 않음 |
-| 이 저장소 `main`의 push 또는 `main`에서 수동 실행 | 수행 | 빌드 성공 후 생성·검증 | 하지 않음 |
-| 검증된 정식 버전 태그 push | 수행 | 빌드 성공 후 생성·검증 | 모든 단계 성공 후 게시 |
-
-출처 증명 작업은 같은 실행의 빌드 아티팩트 ID로 파일을 받아 SHA-256을 대조한 뒤 EXE와 배포 ZIP을 증명합니다. 인증서 비밀키나 저장된 인증서 시크릿 대신 GitHub OIDC와 짧은 수명의 Sigstore 자격을 사용합니다. 검증은 저장소·소스 커밋·실제 참조(`main` 또는 버전 태그)·워크플로와 GitHub 호스팅 실행기를 확인하며 증명 번들은 별도 `provenance-RUN_NUMBER-RUN_ATTEMPT` 아티팩트에 30일간 보관합니다.
-
-이 증명은 **어느 GitHub 소스와 워크플로에서 빌드됐는지 확인하는 출처 증명**입니다. Windows Authenticode나 SmartScreen의 신뢰된 게시자 서명이 아닙니다. CI 배포본의 실행 경로 설정에는 PC별 경로 대신 `node.exe`·`codex.exe`만 들어갑니다.
-
-GitHub CLI에서 실행을 조회하고 파일을 받을 수 있습니다. `RUN_ID`, `RUN_NUMBER`, `RUN_ATTEMPT`는 선택한 실행의 실제 값으로 바꿉니다. `gh run download`는 아티팩트 포장을 풀어 `downloaded/`에 파일을 놓습니다.
+<details>
+<summary>v1.2.0 ZIP 체크섬과 출처 증명 확인 명령</summary>
 
 ```powershell
-gh workflow view windows-build.yml --repo JooWon0712/codex-usage-overlay
-gh run list --workflow windows-build.yml --branch main --repo JooWon0712/codex-usage-overlay
-gh run view RUN_ID --repo JooWon0712/codex-usage-overlay
-gh run download RUN_ID --repo JooWon0712/codex-usage-overlay -n windows-x64-RUN_NUMBER-RUN_ATTEMPT -D downloaded
-```
+$repo = 'JooWon0712/codex-usage-overlay'
+$tag = 'v1.2.0'
+$sourceSha = 'be35cf7275ac1b5878b42761d17a9abb40aaacfe'
+$zipName = 'codex-usage-overlay-windows-x64.zip'
+$bundle = 'codex-usage-overlay.intoto.jsonl'
+$output = 'downloaded-v1.2.0'
 
-`main` 실행의 아티팩트에서 받은 배포 ZIP은 다음처럼 검증합니다. 특정 커밋까지 고정하려면 실행에 표시된 전체 커밋 SHA를 `--source-digest COMMIT_SHA`로 추가합니다. 같은 명령에서 파일 경로를 `downloaded/codex-usage-overlay/UsageOverlay.exe`로 바꾸면 EXE도 검증할 수 있습니다.
+gh release download $tag --repo $repo -p $zipName -p SHA256SUMS.txt -p $bundle -D $output
+if ($LASTEXITCODE -ne 0) { throw '릴리스 파일 다운로드 실패' }
 
-```powershell
-gh attestation verify downloaded/codex-usage-overlay-windows-x64.zip `
-  --repo JooWon0712/codex-usage-overlay `
-  --signer-workflow JooWon0712/codex-usage-overlay/.github/workflows/windows-build.yml `
-  --source-ref refs/heads/main `
-  --deny-self-hosted-runners
-```
+$zip = Join-Path $output $zipName
+$actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+$checksums = Get-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt')
+if ("$actual  $zipName" -cnotin $checksums) { throw 'ZIP 체크섬 불일치' }
 
-### Release 다운로드와 검증
-
-공개된 태그가 있으면 ZIP·체크섬·증명 번들을 함께 받을 수 있습니다. 아래 `vX.Y.Z`는 실제 공개 태그로, `SOURCE_COMMIT_FROM_RELEASE_NOTES`는 해당 Release 노트의 `Source commit` 전체 SHA로 바꿉니다.
-
-```powershell
-$tag = 'vX.Y.Z'
-$sourceSha = 'SOURCE_COMMIT_FROM_RELEASE_NOTES'
-gh release download $tag --repo JooWon0712/codex-usage-overlay `
-  -p codex-usage-overlay-windows-x64.zip -p SHA256SUMS.txt `
-  -p codex-usage-overlay.intoto.jsonl -D downloaded
-gh attestation verify downloaded/codex-usage-overlay-windows-x64.zip `
-  --bundle downloaded/codex-usage-overlay.intoto.jsonl `
-  --repo JooWon0712/codex-usage-overlay `
+gh attestation verify $zip --bundle (Join-Path $output $bundle) --repo $repo `
   --source-ref "refs/tags/$tag" --source-digest $sourceSha `
-  --signer-workflow JooWon0712/codex-usage-overlay/.github/workflows/windows-build.yml `
-  --deny-self-hosted-runners
+  --signer-workflow "$repo/.github/workflows/windows-build.yml" --deny-self-hosted-runners
+if ($LASTEXITCODE -ne 0) { throw 'ZIP 출처 증명 검증 실패' }
 ```
 
-ZIP을 `downloaded/codex-usage-overlay/`에 풀면 같은 증명 번들로 그 안의 `UsageOverlay.exe`도 검증할 수 있습니다. Release 자동 게시는 앱의 자동 업데이트나 로컬 설치를 수행하지 않습니다. 업데이트는 실행 중인 앱을 X로 종료한 뒤 전체 폴더를 교체합니다.
+ZIP을 푼 뒤 위 검증의 파일 경로를 `UsageOverlay.exe`로 바꾸면 같은 증명 번들로 EXE도 확인할 수 있습니다. 체크섬 목록에서 EXE의 항목은 `codex-usage-overlay/UsageOverlay.exe`입니다. 다른 버전에서는 해당 릴리스의 태그와 **Source commit** 전체 SHA를 사용하세요.
 
-### 버전 태그로 게시하기
+</details>
 
-태그는 **`vMAJOR.MINOR.PATCH` 정식 버전**만 허용합니다. 태그 `vX.Y.Z`와 `src/Program.cs`의 `AssemblyVersion`·`AssemblyFileVersion`이 모두 `X.Y.Z.0`으로 일치해야 하며 태그 커밋이 `origin/main`에 포함돼 있어야 합니다. `main`의 모든 커밋이 Release가 되는 것은 아니며 **태그 push만** 게시를 시작합니다.
+### 릴리스 게시
 
-다음 배포를 위한 관리자용 예시는 아래와 같습니다. `vX.Y.Z`를 새 버전의 실제 태그로 바꾸고 소스 버전과 `main` 반영 상태를 확인한 뒤 사용합니다. 이미 존재하는 태그는 재사용하거나 이동하지 않습니다.
+[Windows 빌드 워크플로](.github/workflows/windows-build.yml)는 PR에서 빌드와 검사, 이 저장소의 `main` 푸시에서 추가로 출처 증명을 수행합니다. 공개 릴리스는 정식 버전 태그 푸시로 시작합니다.
 
-```powershell
-$tag = 'vX.Y.Z'
-git fetch origin
-git switch main
-git pull --ff-only
-git tag -a $tag -m "Codex Usage Overlay $tag"
-git push origin $tag
-```
+1. `src/Program.cs`의 어셈블리 버전과 파일 버전을 모두 `X.Y.Z.0`으로 맞추고 검사합니다. 버전 정보를 `src/PortableReleaseInfo.cs`와 사용자 문서에도 반영합니다.
+2. 변경을 커밋해 `main`에 먼저 푸시합니다. 검증한 커밋에 새 `vX.Y.Z` 태그를 만들어 푸시합니다.
+3. [GitHub Actions](https://github.com/JooWon0712/codex-usage-overlay/actions/workflows/windows-build.yml)에서 빌드, 출처 증명, 게시 작업을 확인합니다. 게시 작업은 새 초안의 ZIP·체크섬·증명 파일과 태그 커밋을 검증한 뒤 공개합니다.
 
-게시 작업은 권한이 분리된 별도 job에서 새 draft를 만들고 세 자산을 올린 뒤 자산별 SHA-256·크기와 태그 커밋을 확인한 후 공개합니다. 같은 태그의 Release나 draft가 이미 있으면 중단하며 덮어쓰지 않습니다. 실패 시 미공개 draft가 남을 수 있으므로 재시도 전에 상태를 확인해야 합니다.
-
-자세한 조작 설명은 [사용안내](사용안내.txt), 기본 앱 표시 조사 내용은 [기본 사용량 표시 조사](docs/native-usage-indicator.md)를 참고하세요.
+사용 방법과 선택 연동의 세부 설정은 [사용안내](사용안내.txt)에서 볼 수 있습니다.
