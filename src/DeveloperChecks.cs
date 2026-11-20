@@ -293,6 +293,55 @@ namespace PersonalUsageOverlay
             header.ClassName = "group/titlebar top-[var(--app-shell-page-header-offset,0px)]";
             toolbar.Bounds = new Rectangle(450, 50, 690, 52);
             checks["title_menu_outside_toolbar_rejected"] = !matches();
+
+            const string unifiedHeader = "pointer-events-none top-[var(--app-shell-page-header-offset,0px)] flex "
+                + "h-[var(--app-shell-header-height,var(--height-toolbar))] min-w-0 flex-1 isolate self-start items-center "
+                + "gap-toolbar-action overflow-x-clip [contain:layout_style] [-webkit-app-region:initial] relative";
+            header.ClassName = unifiedHeader;
+            var menu = new TitleAnchorReader.Snapshot { Type = ControlType.Button, Name = document.Name, HasBounds = true,
+                ClassName = "conversation-header-control px-conversation-title-inline text-conversation-title",
+                Bounds = new Rectangle(285, 53, 142, 44) };
+            checks["unified_shell_title_button_does_not_need_nested_toolbar"] =
+                TitleAnchorReader.Valid(menu, document, header, null, client, 1f);
+            title.Type = ControlType.Text;
+            checks["unified_shell_plain_title_text_matches_without_a_menu_or_toolbar"] =
+                TitleAnchorReader.Valid(title, document, header, null, client, 1f);
+            title.Offscreen = true;
+            checks["unified_shell_hidden_plain_title_text_rejected"] =
+                !TitleAnchorReader.Valid(title, document, header, null, client, 1f);
+            title.Offscreen = false;
+            menu.Name = "Other session";
+            checks["unified_shell_title_button_for_other_session_rejected"] =
+                !TitleAnchorReader.Valid(menu, document, header, null, client, 1f);
+            menu.Name = document.Name;
+            header.ClassName = unifiedHeader.Replace(" [contain:layout_style]", "");
+            checks["unified_shell_adjacent_toolbar_not_a_main_header"] =
+                !TitleAnchorReader.Valid(menu, document, header, toolbar, client, 1f);
+            header.ClassName = unifiedHeader;
+            menu.Bounds.Offset(-65, 0);
+            checks["unified_shell_title_button_outside_main_header_rejected"] =
+                !TitleAnchorReader.Valid(menu, document, header, null, client, 1f);
+
+            menu.Bounds.Offset(65, 0);
+            toolbar.Bounds = new Rectangle(260, 50, 250, 52);
+            toolbar.ClassName = "Toolbar-w4tLPD @container/app-shell-header-toolbar TabStripInset-s7NayL TabStripFlushStart-C9qRZk";
+            checks["unified_main_plain_title_in_thread_toolbar_matches"] = matches();
+
+            header.ClassName = "[anchor-scope:--titlebar-end-controls] pointer-events-none z-30 flex "
+                + "h-[var(--app-shell-titlebar-height,var(--height-toolbar))] min-w-0 items-center overflow-x-clip draggable";
+            checks["outer_titlebar_finds_title_with_no_main_header_wrapper"] = matches()
+                && TitleAnchorReader.Valid(menu, document, header, toolbar, client, 1f);
+            checks["outer_titlebar_needs_a_thread_toolbar"] =
+                !TitleAnchorReader.Valid(menu, document, header, null, client, 1f);
+            toolbar.ClassName = "@container/app-shell-header-toolbar PageInset-YLtCuh";
+            checks["outer_titlebar_rejects_other_page_toolbars"] = !matches();
+            toolbar.ClassName = "@container/app-shell-header-toolbar TabStripFlushStart-C9qRZk";
+            document.Name = "A different thread";
+            checks["outer_titlebar_rejects_same_toolbar_with_a_different_document_name"] = !matches();
+            checks["updated_thread_body_is_excluded_from_title_search"] = TitleAnchorReader.IsConversationBody(
+                "relative flex min-h-0 flex-1 [--thread-content-responsive-max-width:var(--thread-content-expanded-max-width,inherit)]");
+            checks["unified_header_and_toolbar_are_not_excluded_as_thread_body"] =
+                !TitleAnchorReader.IsConversationBody(unifiedHeader) && !TitleAnchorReader.IsConversationBody(toolbar.ClassName);
         }
 
         public static void RenderSamples(string directory)

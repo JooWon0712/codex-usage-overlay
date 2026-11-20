@@ -2,7 +2,7 @@
 
 Windows용 Codex 데스크톱 앱 위에서 **계정의 남은 사용 한도**를 보는 포터블 도구입니다. Codex의 주간 한도와 선택한 경우 Claude Code의 5시간·주간 한도를 표시합니다.
 
-[Windows x64 포터블 ZIP 다운로드](https://github.com/JooWon0712/codex-usage-overlay/releases/download/v1.2.1/codex-usage-overlay-windows-x64.zip) · [v1.2.1 릴리스와 검증 파일](https://github.com/JooWon0712/codex-usage-overlay/releases/tag/v1.2.1)
+[Windows x64 포터블 ZIP 다운로드](https://github.com/JooWon0712/codex-usage-overlay/releases/latest/download/codex-usage-overlay-windows-x64.zip) · [최신 릴리스와 검증 파일](https://github.com/JooWon0712/codex-usage-overlay/releases/latest)
 
 ## 미리보기
 
@@ -44,7 +44,7 @@ ZIP을 푼 폴더를 그대로 사용합니다. 실행 중에는 작업 표시�
 
 | 설정 | 동작 |
 | --- | --- |
-| 배지 형식 | **상세형**은 행 아래의 잔여율 막대와 초기화 카운트다운을 표시합니다. **간결형**은 한도마다 한 줄에 잔여율과 초기화 시각을 표시합니다. 실제 배지 오른쪽 위 화살표로도 전환할 수 있습니다. |
+| 배지 형식 | **상세형**은 행 아래의 잔여율 막대와 초기화 카운트다운을 표시합니다. **간결형**은 한도마다 한 줄에 잔여율과 초기화 시각을 표시합니다. 배지 오른쪽 위에서 상세형은 아래쪽 화살표, 간결형은 위쪽 화살표를 눌러 전환합니다. |
 | 세션 이름 | 두 형식 모두 Codex와 Claude Code의 주간 한도는 **주간 세션**, Claude Code의 5시간 한도는 **현재 세션**으로 표시합니다. |
 | 구독 요금제 | 기본 켜짐. 확인된 요금제를 상세형은 서비스 머리글에, 간결형은 서비스 이름 아래에 표시합니다. |
 | 주간 초기화 날짜·시각 | Codex 주간 세션의 초기화 일정을 행 오른쪽에 표시합니다. |
@@ -153,7 +153,7 @@ v1.2.0 준비 과정에서 **자체 검사 662개, Node 검사 60개, 패키징 
 
 ```powershell
 $repo = 'JooWon0712/codex-usage-overlay'
-$tag = 'v1.2.1'
+$tag = 'v1.2.2'
 $sourceSha = 'SOURCE_COMMIT_FROM_RELEASE_NOTES'
 $zipName = 'codex-usage-overlay-windows-x64.zip'
 $bundle = 'codex-usage-overlay.intoto.jsonl'

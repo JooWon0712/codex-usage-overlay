@@ -337,16 +337,14 @@ namespace PersonalUsageOverlay
 
         private void UpdateBadge()
         {
-            Native.RECT client;
-            var origin = new Native.POINT();
-            if (!Native.GetClientRect(target, out client) || !Native.ClientToScreen(target, ref origin))
+            Rectangle rect;
+            float scale;
+            if (!TryGetTargetGeometry(out rect, out scale))
             {
                 HideBadge();
                 return;
             }
 
-            float scale = Math.Max(96, Native.GetDpiForWindow(target)) / 96f;
-            var rect = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
             titleAnchor = Prefs.Position == "sidebar" ? null : titleTracker.GetOrRequest(target, rect, scale);
             anchorStatus = titleAnchor == null ? "sidebar" : titleAnchor.Status;
             float badgeScale;
@@ -378,6 +376,20 @@ namespace PersonalUsageOverlay
             }
             catch { HideBadge(); return; }
             UpdateBadgeFormatButton(bounds, badgeScale);
+        }
+
+        private bool TryGetTargetGeometry(out Rectangle bounds, out float scale)
+        {
+            Native.RECT client;
+            var origin = new Native.POINT();
+            bounds = Rectangle.Empty;
+            scale = 1;
+            if (!Native.GetClientRect(target, out client) || !Native.ClientToScreen(target, ref origin))
+                return false;
+
+            scale = Math.Max(96, Native.GetDpiForWindow(target)) / 96f;
+            bounds = new Rectangle(origin.X, origin.Y, client.Right - client.Left, client.Bottom - client.Top);
+            return true;
         }
 
         private void HideBadge()
@@ -778,6 +790,16 @@ namespace PersonalUsageOverlay
             lastDiagnostic = DateTime.UtcNow;
             try
             {
+                // Opt-in diagnostics can check placement without foregrounding the target or showing the badge.
+                TitleAnchorObservation backgroundTitle = null;
+                Rectangle proposedBounds = Rectangle.Empty, client;
+                float scale;
+                if (!active && !settingsOverlayActive && Prefs.Position == Preferences.BelowTitle
+                    && FindSettingsTarget() && TryGetTargetGeometry(out client, out scale))
+                {
+                    backgroundTitle = titleTracker.GetOrRequest(target, client, scale);
+                    proposedBounds = OverlayLayout.CalculateBounds(client, scale, Prefs, backgroundTitle);
+                }
                 uint targetPid = 0;
                 if (target != IntPtr.Zero)
                     Native.GetWindowThreadProcessId(target, out targetPid);
@@ -814,6 +836,15 @@ namespace PersonalUsageOverlay
                     darkTheme = Theme.IsDark,
                     titleAnchorStatus = anchorStatus,
                     titleAnchorObservedAt = titleAnchor != null ? titleAnchor.ObservedAtUtc.ToString("o") : null,
+                    titleAnchorElapsedMs = titleAnchor != null ? (long?)titleAnchor.ElapsedMilliseconds : null,
+                    titleAnchorSearchLimit = titleAnchor != null ? titleAnchor.SearchLimit : null,
+                    backgroundTitle = backgroundTitle == null ? null : new
+                    {
+                        status = backgroundTitle.Status,
+                        searchLimit = backgroundTitle.SearchLimit,
+                        elapsedMs = backgroundTitle.ElapsedMilliseconds,
+                        hasPlacement = !proposedBounds.IsEmpty
+                    },
                     titleBounds = titleAnchor != null ? new { x=titleAnchor.TitleBounds.X,y=titleAnchor.TitleBounds.Y,width=titleAnchor.TitleBounds.Width,height=titleAnchor.TitleBounds.Height } : null,
                     headerBounds = titleAnchor != null ? new { x=titleAnchor.HeaderBounds.X,y=titleAnchor.HeaderBounds.Y,width=titleAnchor.HeaderBounds.Width,height=titleAnchor.HeaderBounds.Height } : null,
                     executionMode = "window",

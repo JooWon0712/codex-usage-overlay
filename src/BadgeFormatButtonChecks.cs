@@ -68,9 +68,9 @@ namespace PersonalUsageOverlay
                         }
                     }
                     bool matches = middleAlpha > 0 && outerAlpha > 0 &&
-                        (compact ? (double)middleY / middleAlpha > (double)outerY / outerAlpha
-                            : (double)middleY / middleAlpha < (double)outerY / outerAlpha);
-                    checks[compact ? "badge_format_button_points_down_to_expand" : "badge_format_button_points_up_to_collapse"] = matches;
+                        (compact ? (double)middleY / middleAlpha < (double)outerY / outerAlpha
+                            : (double)middleY / middleAlpha > (double)outerY / outerAlpha);
+                    checks[compact ? "badge_format_button_points_up_in_compact_mode" : "badge_format_button_points_down_in_detailed_mode"] = matches;
                 }
             }
         }

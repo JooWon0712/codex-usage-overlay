@@ -63,7 +63,7 @@ namespace PersonalUsageOverlay
         internal static void DrawChevron(Graphics graphics, Rectangle bounds, float scale, Color color, bool compact)
         {
             float centerX = bounds.Left + bounds.Width / 2f, centerY = bounds.Top + bounds.Height / 2f;
-            float halfWidth = 4.5f * scale, rise = (compact ? 2.25f : -2.25f) * scale;
+            float halfWidth = 4.5f * scale, rise = (compact ? -2.25f : 2.25f) * scale;
             var state = graphics.Save();
             try
             {

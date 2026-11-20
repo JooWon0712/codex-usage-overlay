@@ -10,6 +10,7 @@ namespace PersonalUsageOverlay
     internal sealed class TitleAnchorObservation
     {
         public string Status;
+        public string SearchLimit;
         public Rectangle TitleBounds, HeaderBounds, TitleMenuBounds;
         public DateTime ObservedAtUtc;
         public long ElapsedMilliseconds;
@@ -20,6 +21,8 @@ namespace PersonalUsageOverlay
     {
         private const int MaxNodes = 600, MaxDepth = 28, SearchBudgetMilliseconds = 1500;
         private const int SearchTopDips = 240;
+        private const string HeaderOffsetClass = "top-[var(--app-shell-page-header-offset,0px)]";
+        private const string ShellToolbarClass = "@container/app-shell-header-toolbar";
         private static readonly char[] ClassSeparators = { ' ', '\t', '\r', '\n' };
         private IntPtr cachedWindow;
         private Candidate cached;
@@ -34,10 +37,13 @@ namespace PersonalUsageOverlay
             public bool HasBounds;
         }
 
+        private enum HeaderKind { None, Legacy, UnifiedMain, UnifiedShell }
+
         private sealed class Visit
         {
             public AutomationElement Element, Document, Header, Toolbar, TitleMenu;
             public Snapshot DocumentInfo, HeaderInfo, ToolbarInfo;
+            public HeaderKind Kind;
             public int Depth;
         }
 
@@ -47,7 +53,10 @@ namespace PersonalUsageOverlay
             public Rectangle TitleBounds, HeaderBounds, TitleMenuBounds;
         }
 
-        private sealed class SearchLimitException : Exception { }
+        private sealed class SearchLimitException : Exception
+        {
+            public SearchLimitException(string limit) : base(limit) { }
+        }
 
         public TitleAnchorObservation Query(IntPtr hwnd, Rectangle clientBounds, float scale)
         {
@@ -89,10 +98,12 @@ namespace PersonalUsageOverlay
                 cachedAtUtc = DateTime.UtcNow;
                 return Result("ok", found, clock);
             }
-            catch (SearchLimitException)
+            catch (SearchLimitException error)
             {
                 cached = null;
-                return Result("search_timeout", null, clock);
+                var result = Result("search_timeout", null, clock);
+                result.SearchLimit = error.Message;
+                return result;
             }
             catch (Exception error)
             {
@@ -117,7 +128,14 @@ namespace PersonalUsageOverlay
         private static Snapshot Read(AutomationElement element, CacheRequest request, Stopwatch clock)
         {
             CheckBudget(clock);
-            var info = element.GetUpdatedCache(request).Cached;
+            var snapshot = ReadCached(element.GetUpdatedCache(request));
+            CheckBudget(clock);
+            return snapshot;
+        }
+
+        private static Snapshot ReadCached(AutomationElement element)
+        {
+            var info = element.Cached;
             var snapshot = new Snapshot
             {
                 Type = info.ControlType,
@@ -129,7 +147,6 @@ namespace PersonalUsageOverlay
             Rectangle bounds;
             snapshot.HasBounds = TryRectangle(info.BoundingRectangle, out bounds);
             snapshot.Bounds = bounds;
-            CheckBudget(clock);
             return snapshot;
         }
 
@@ -141,7 +158,8 @@ namespace PersonalUsageOverlay
             var walker = TreeWalker.RawViewWalker;
             var queue = new Queue<Visit>();
             CheckBudget(clock);
-            queue.Enqueue(new Visit { Element = AutomationElement.FromHandle(hwnd) });
+            var root = AutomationElement.FromHandle(hwnd).GetUpdatedCache(request);
+            queue.Enqueue(new Visit { Element = root });
             int scheduled = 1;
             var top = new Rectangle(client.Left, client.Top, client.Width,
                 Math.Min(client.Height, (int)Math.Ceiling(SearchTopDips * scale)));
@@ -149,34 +167,39 @@ namespace PersonalUsageOverlay
             {
                 CheckBudget(clock);
                 var visit = queue.Dequeue();
-                var info = Read(visit.Element, request, clock);
+                var info = ReadCached(visit.Element);
                 if (info.Offscreen || IsSidebar(info.ClassName) || IsConversationBody(info.ClassName)
                     || (info.HasBounds && !info.Bounds.IntersectsWith(top))) continue;
 
+                // Nested web documents belong to embedded panels. The session header lives in the outer document.
+                if (info.Type == ControlType.Document && visit.Document != null) continue;
                 if (info.Type == ControlType.Document && info.Id == "RootWebArea")
                 {
                     visit.Document = visit.Element;
                     visit.DocumentInfo = info;
                     visit.Header = null; visit.HeaderInfo = null;
+                    visit.Kind = HeaderKind.None;
                     visit.Toolbar = null; visit.ToolbarInfo = null;
                     visit.TitleMenu = null;
                 }
-                if (visit.Document != null && IsHeader(info.ClassName))
+                var headerKind = visit.Document == null ? HeaderKind.None : ClassifyHeader(info.ClassName);
+                if (headerKind != HeaderKind.None)
                 {
                     visit.Header = visit.Element;
                     visit.HeaderInfo = info;
+                    visit.Kind = headerKind;
                     visit.Toolbar = null; visit.ToolbarInfo = null;
                     visit.TitleMenu = null;
                 }
-                if (visit.Header != null && IsToolbar(info))
+                if (IsToolbar(info, visit.Kind))
                 {
                     visit.Toolbar = visit.Element;
                     visit.ToolbarInfo = info;
                     visit.TitleMenu = null;
                 }
-                if (visit.Toolbar != null && IsTitleMenu(info))
+                if ((visit.Kind == HeaderKind.UnifiedMain || visit.Toolbar != null) && IsTitleMenu(info))
                     visit.TitleMenu = visit.Element;
-                if (visit.DocumentInfo != null && visit.HeaderInfo != null && visit.ToolbarInfo != null
+                if (visit.HeaderInfo != null
                     && Valid(info, visit.DocumentInfo, visit.HeaderInfo, visit.ToolbarInfo, client, scale))
                 {
                     // Prefer the text rectangle if UIA exposes the label inside the same menu button.
@@ -193,17 +216,19 @@ namespace PersonalUsageOverlay
                         TitleBounds = info.Bounds, HeaderBounds = visit.HeaderInfo.Bounds };
                 }
 
+                // A deep branch must not discard an otherwise valid title in a different branch.
+                if (info.Type == ControlType.Text || visit.Depth >= MaxDepth) continue;
                 CheckBudget(clock);
-                var child = walker.GetFirstChild(visit.Element);
-                if (child != null && visit.Depth >= MaxDepth) throw new SearchLimitException();
+                var child = walker.GetFirstChild(visit.Element, request);
                 while (child != null)
                 {
                     CheckBudget(clock);
-                    if (scheduled++ >= MaxNodes) throw new SearchLimitException();
+                    if (scheduled++ >= MaxNodes) throw new SearchLimitException("nodes");
                     queue.Enqueue(new Visit { Element = child, Depth = visit.Depth + 1, Document = visit.Document,
                         DocumentInfo = visit.DocumentInfo, Header = visit.Header, HeaderInfo = visit.HeaderInfo,
-                        Toolbar = visit.Toolbar, ToolbarInfo = visit.ToolbarInfo, TitleMenu = visit.TitleMenu });
-                    child = walker.GetNextSibling(child);
+                        Kind = visit.Kind, Toolbar = visit.Toolbar, ToolbarInfo = visit.ToolbarInfo,
+                        TitleMenu = visit.TitleMenu });
+                    child = walker.GetNextSibling(child, request);
                 }
             }
             return found;
@@ -213,51 +238,69 @@ namespace PersonalUsageOverlay
         {
             var document = Read(candidate.Document, request, clock);
             var header = Read(candidate.Header, request, clock);
-            var toolbar = Read(candidate.Toolbar, request, clock);
+            var toolbar = candidate.Toolbar == null ? null : Read(candidate.Toolbar, request, clock);
             var title = Read(candidate.Title, request, clock);
+            var menu = candidate.TitleMenu == null ? null
+                : candidate.TitleMenu == candidate.Title ? title : Read(candidate.TitleMenu, request, clock);
             if (!Valid(title, document, header, toolbar, client, scale)) return false;
             candidate.TitleBounds = title.Bounds;
             candidate.HeaderBounds = header.Bounds;
-            candidate.TitleMenuBounds = Rectangle.Empty;
-            if (candidate.TitleMenu != null)
-            {
-                var menu = candidate.TitleMenu == candidate.Title ? title : Read(candidate.TitleMenu, request, clock);
-                if (IsTitleMenu(menu) && !menu.Offscreen && menu.HasBounds
-                    && toolbar.Bounds.Contains(menu.Bounds) && menu.Bounds.Contains(title.Bounds))
-                    candidate.TitleMenuBounds = menu.Bounds;
-            }
+            candidate.TitleMenuBounds = IsTitleInMenu(title, menu, toolbar ?? header) ? menu.Bounds : Rectangle.Empty;
             return true;
         }
 
-        internal static bool Valid(Snapshot title, Snapshot document, Snapshot header, Snapshot toolbar, Rectangle client, float scale)
+        internal static bool Valid(Snapshot title, Snapshot document, Snapshot header, Snapshot toolbar,
+            Rectangle client, float scale)
         {
-            bool isTitle = title.Type == ControlType.Text || IsTitleMenu(title);
-            return isTitle && document.Type == ControlType.Document && document.Id == "RootWebArea"
-                && IsToolbar(toolbar) && IsHeader(header.ClassName)
-                && !title.Offscreen && !document.Offscreen && !header.Offscreen && !toolbar.Offscreen
+            var kind = ClassifyHeader(header.ClassName);
+            bool validHeader = document.Type == ControlType.Document && document.Id == "RootWebArea" && kind != HeaderKind.None
+                && !title.Offscreen && !document.Offscreen && !header.Offscreen
                 && title.Name.Length > 0 && string.Equals(title.Name, document.Name, StringComparison.Ordinal)
-                && title.HasBounds && header.HasBounds && toolbar.HasBounds
+                && title.HasBounds && header.HasBounds
                 && client.Contains(header.Bounds) && client.Contains(title.Bounds)
-                && header.Bounds.Contains(toolbar.Bounds) && toolbar.Bounds.Contains(title.Bounds)
+                && header.Bounds.Contains(title.Bounds)
                 && header.Bounds.Height <= Math.Ceiling(160 * scale)
                 && header.Bounds.Bottom <= client.Top + Math.Ceiling(SearchTopDips * scale);
+            if (!validHeader) return false;
+            if (kind == HeaderKind.UnifiedMain && toolbar == null)
+                return title.Type == ControlType.Text || IsTitleMenu(title);
+
+            return (title.Type == ControlType.Text || IsTitleMenu(title))
+                && toolbar != null && IsToolbar(toolbar, kind) && !toolbar.Offscreen && toolbar.HasBounds
+                && header.Bounds.Contains(toolbar.Bounds) && toolbar.Bounds.Contains(title.Bounds);
         }
 
-        private static bool IsHeader(string classes)
+        private static bool IsTitleInMenu(Snapshot title, Snapshot menu, Snapshot region)
         {
-            return HasClass(classes, "MainTitlebar-", true) || HasClass(classes, "ApplicationMenuPageHeader-", true)
-                || (HasClass(classes, "group/titlebar")
-                    && HasClass(classes, "top-[var(--app-shell-page-header-offset,0px)]"));
+            return menu != null && IsTitleMenu(menu) && !menu.Offscreen && menu.HasBounds
+                && region.Bounds.Contains(menu.Bounds) && menu.Bounds.Contains(title.Bounds);
         }
 
-        private static bool IsToolbar(Snapshot info)
+        private static HeaderKind ClassifyHeader(string classes)
         {
-            return info.Type == ControlType.ToolBar || HasClass(info.ClassName, "@container/app-shell-header-toolbar");
+            if (HasClass(classes, "MainTitlebar-", true) || HasClass(classes, "ApplicationMenuPageHeader-", true)
+                || (HasClass(classes, "group/titlebar") && HasClass(classes, HeaderOffsetClass))) return HeaderKind.Legacy;
+            if (HasClass(classes, HeaderOffsetClass) && HasClass(classes, "[contain:layout_style]")
+                && HasClass(classes, "h-[var(--app-shell-header-height,var(--height-toolbar))]")) return HeaderKind.UnifiedMain;
+            if (HasClass(classes, "[anchor-scope:--titlebar-end-controls]")
+                && HasClass(classes, "h-[var(--app-shell-titlebar-height,var(--height-toolbar))]")) return HeaderKind.UnifiedShell;
+            return HeaderKind.None;
+        }
+
+        private static bool IsToolbar(Snapshot info, HeaderKind kind)
+        {
+            if (kind == HeaderKind.None) return false;
+            if (kind == HeaderKind.Legacy && info.Type == ControlType.ToolBar) return true;
+            if (!HasClass(info.ClassName, ShellToolbarClass)) return false;
+            // The shell also hosts unrelated toolbars. Only its thread title toolbar can serve as an anchor.
+            return kind != HeaderKind.UnifiedShell || HasClass(info.ClassName, "TabStripFlushStart-", true);
         }
 
         private static bool IsTitleMenu(Snapshot info)
         {
-            return info.Type == ControlType.Button && HasClass(info.ClassName, "text-conversation-title");
+            return info.Type == ControlType.Button && (HasClass(info.ClassName, "text-conversation-title")
+                || (HasClass(info.ClassName, "conversation-header-control")
+                    && HasClass(info.ClassName, "px-conversation-title-inline")));
         }
 
         private static bool IsSidebar(string classes)
@@ -265,10 +308,11 @@ namespace PersonalUsageOverlay
             return HasClass(classes, "app-shell-left-panel", true) || HasClass(classes, "ConversationSidebar-", true);
         }
 
-        private static bool IsConversationBody(string classes)
+        internal static bool IsConversationBody(string classes)
         {
             // In the observed Windows tree these transcript surfaces are siblings of the header.
-            return HasClass(classes, "MainContentSurface-", true) || HasClass(classes, "MainContentViewport-", true);
+            return HasClass(classes, "MainContentSurface-", true) || HasClass(classes, "MainContentViewport-", true)
+                || HasClass(classes, "[--thread-content-responsive-max-width:var(--thread-content-expanded-max-width,inherit)]");
         }
 
         private static bool HasClass(string classes, string name, bool matchPrefix = false)
@@ -295,7 +339,7 @@ namespace PersonalUsageOverlay
 
         private static void CheckBudget(Stopwatch clock)
         {
-            if (clock.ElapsedMilliseconds >= SearchBudgetMilliseconds) throw new SearchLimitException();
+            if (clock.ElapsedMilliseconds >= SearchBudgetMilliseconds) throw new SearchLimitException("elapsed");
         }
 
         private static bool IsProviderFailure(Exception error)
