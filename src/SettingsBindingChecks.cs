@@ -310,13 +310,11 @@ namespace PersonalUsageOverlay
             string preferences = json.Serialize(host.Prefs);
 
             window.SelectPreviewPage(0);
-            bool overlay = buttons[0].Selected && !buttons[1].Selected && LocallyVisible(pages[0]) && !LocallyVisible(pages[1])
-                && PositionAdjustmentPolicy.CanShow(false, true, true, true);
+            bool overlay = buttons[0].Selected && !buttons[1].Selected && LocallyVisible(pages[0]) && !LocallyVisible(pages[1]);
             window.SelectPreviewPage(1);
-            bool position = !buttons[0].Selected && buttons[1].Selected && !LocallyVisible(pages[0]) && LocallyVisible(pages[1])
-                && PositionAdjustmentPolicy.CanShow(false, true, true, true);
+            bool position = !buttons[0].Selected && buttons[1].Selected && !LocallyVisible(pages[0]) && LocallyVisible(pages[1]);
             window.SelectPreviewPage(0);
-            checks["settings_both_tabs_use_common_foreground_target_display_policy"] = overlay && position
+            checks["settings_tab_buttons_select_the_corresponding_page"] = overlay && position
                 && buttons[0].Selected && !buttons[1].Selected;
             checks["settings_tab_navigation_keeps_saved_options_and_cached_example_without_showing"] = !window.Visible
                 && Object.ReferenceEquals(savedLayout, host.Prefs.BadgeLayout) && preferences == json.Serialize(host.Prefs)

@@ -28,7 +28,7 @@ namespace PersonalUsageOverlay
             ClaudeUsageChecks.Run(checks);
             ClaudeAutoRefreshChecks.Run(checks);
             PlanPresentationChecks.Run(checks);
-            PositionAdjustmentChecks.Run(checks);
+            BadgeZOrderSelectionChecks.Run(checks);
             BadgeZOrderChecks.Run(checks);
             SettingsBindingChecks.Run(checks);
             SettingsFrameChecks.Run(checks);

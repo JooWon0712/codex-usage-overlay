@@ -54,10 +54,9 @@ namespace PersonalUsageOverlay
         private readonly List<IntPtr> hooks = new List<IntPtr>();
         private readonly Native.EventProc eventCallback;
         private IntPtr target = IntPtr.Zero;
+        private DateTime nextTargetSearch;
         private readonly Dictionary<uint, Tuple<bool, DateTime>> processCache = new Dictionary<uint, Tuple<bool, DateTime>>();
         private bool active;
-        private bool settingsOverlayActive;
-        private bool badgeWasSettingsOverlay;
         private Rectangle lastBounds;
         private readonly string diagnostics;
         private DateTime lastDiagnostic = DateTime.MinValue, workerRestartAfter = DateTime.MinValue;
@@ -97,7 +96,7 @@ namespace PersonalUsageOverlay
                 if (anchorStatus == "no_space") return "배지 전체를 표시할 공간 부족 · 크기 조절 가능";
                 if (Prefs.Position == "sidebar") return "사이드바 · 창 기준 위치";
                 if (anchorStatus == "ok") return "본문 제목 아래 · 자동 위치 확인됨";
-                if (anchorStatus == "pending") return "제목 위치 확인 대기 · 앱 활성 시 읽기";
+                if (anchorStatus == "pending") return "제목 위치 확인 대기";
                 if (anchorStatus == "search_timeout") return "제목 위치 조회 지연 · 잠시 후 재확인";
                 if (anchorStatus == "ambiguous") return "제목 위치가 모호함 · 사이드바 선택 가능";
                 return "제목 위치 확인 불가 · 사이드바 선택 가능";
@@ -276,10 +275,13 @@ namespace PersonalUsageOverlay
                 && !Native.IsIconic(hwnd) && !IsCloaked(hwnd) && TargetProcess(hwnd);
         }
 
-        private bool FindSettingsTarget()
+        private bool FindTarget()
         {
             if (IsAvailableTarget(target)) return true;
             target = IntPtr.Zero;
+            var now = DateTime.UtcNow;
+            if (now < nextTargetSearch) return false;
+            nextTargetSearch = now.AddSeconds(1);
             Native.EnumWindows(delegate(IntPtr hwnd, IntPtr unused)
             {
                 if (Native.GetAncestor(hwnd, 3) == hwnd && IsAvailableTarget(hwnd))
@@ -306,13 +308,8 @@ namespace PersonalUsageOverlay
             bool codexForeground = IsAvailableTarget(root);
             if (codexForeground)
                 target = root;
-            bool settingsNormal = settings != null && !settings.IsDisposed && settings.Visible && settings.WindowState == FormWindowState.Normal;
-            bool settingsForeground = settingsNormal && settings.IsHandleCreated && foreground == settings.Handle;
-            bool settingsTargetAvailable = settingsForeground && FindSettingsTarget();
-            settingsOverlayActive = !codexForeground && settingsTargetAvailable;
-            bool show = PositionAdjustmentPolicy.CanShow(codexForeground, settingsForeground, settingsNormal, settingsTargetAvailable);
-            // Both settings pages are display-only exceptions. Keep regular
-            // account polling tied to Codex focus.
+            bool show = codexForeground || FindTarget();
+            // The badge follows the window independently of regular account polling.
             if (codexForeground != active)
             {
                 active = codexForeground;
@@ -324,7 +321,11 @@ namespace PersonalUsageOverlay
             if (show)
                 UpdateBadge();
             else
+            {
+                titleAnchor = null;
+                anchorStatus = "pending";
                 HideBadge();
+            }
             if (worker == null && DateTime.UtcNow >= workerRestartAfter)
             {
                 StartWorker();
@@ -364,15 +365,13 @@ namespace PersonalUsageOverlay
                 lastBounds = bounds;
             }
 
-            bool reveal = !badge.Visible || badgeWasSettingsOverlay != settingsOverlayActive;
             try
             {
-                bool prepared = !reveal || badge.Present(0);
+                bool prepared = badge.Visible || badge.Present(0);
                 if (prepared && !badge.Visible) badge.Show();
-                bool placed = prepared && (settingsOverlayActive ? BadgeZOrder.Place(badge.Handle, target, bounds)
-                    : Native.SetWindowPos(badge.Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x10 | 0x40));
+                bool placed = prepared && (BadgeZOrder.IsImmediatelyAbove(badge.Handle, target)
+                    || BadgeZOrder.Place(badge.Handle, target, bounds));
                 if (!placed || !badge.Present()) { HideBadge(); return; }
-                badgeWasSettingsOverlay = settingsOverlayActive;
             }
             catch { HideBadge(); return; }
             UpdateBadgeFormatButton(bounds, badgeScale);
@@ -413,7 +412,7 @@ namespace PersonalUsageOverlay
                 if (formatButton.Bounds != buttonBounds) formatButton.Bounds = buttonBounds;
                 if (!formatButton.Present(scale)) { formatButton.Hide(); return; }
                 if (!formatButton.Visible) formatButton.Show();
-                if (Native.GetWindow(badge.Handle, 3) != formatButton.Handle &&
+                if (!BadgeZOrder.IsImmediatelyAbove(formatButton.Handle, badge.Handle) &&
                     !BadgeZOrder.Place(formatButton.Handle, badge.Handle, buttonBounds)) formatButton.Hide();
             }
             catch { formatButton.Hide(); }
@@ -421,10 +420,7 @@ namespace PersonalUsageOverlay
 
         private void ToggleBadgeFormat(object sender, EventArgs e)
         {
-            if (quitting || !formatButton.Visible) return;
-            IntPtr foreground = Native.GetForegroundWindow();
-            bool settingsForeground = settingsOverlayActive && settings.IsHandleCreated && foreground == settings.Handle;
-            if (!settingsForeground && foreground != target && Native.GetAncestor(foreground, 3) != target) return;
+            if (quitting || !formatButton.Visible || !IsAvailableTarget(target)) return;
             var layout = Prefs.BadgeLayout.Copy();
             layout.Compact = !layout.Compact;
             SetBadgeLayout(layout);
@@ -790,16 +786,6 @@ namespace PersonalUsageOverlay
             lastDiagnostic = DateTime.UtcNow;
             try
             {
-                // Opt-in diagnostics can check placement without foregrounding the target or showing the badge.
-                TitleAnchorObservation backgroundTitle = null;
-                Rectangle proposedBounds = Rectangle.Empty, client;
-                float scale;
-                if (!active && !settingsOverlayActive && Prefs.Position == Preferences.BelowTitle
-                    && FindSettingsTarget() && TryGetTargetGeometry(out client, out scale))
-                {
-                    backgroundTitle = titleTracker.GetOrRequest(target, client, scale);
-                    proposedBounds = OverlayLayout.CalculateBounds(client, scale, Prefs, backgroundTitle);
-                }
                 uint targetPid = 0;
                 if (target != IntPtr.Zero)
                     Native.GetWindowThreadProcessId(target, out targetPid);
@@ -808,7 +794,6 @@ namespace PersonalUsageOverlay
                     capturedAt = DateTime.UtcNow.ToString("o"),
                     visible = badge.Visible,
                     active = active,
-                    settingsOverlayActive = settingsOverlayActive,
                     position = Prefs.Position,
                     targetPid = targetPid,
                     targetHandle = target.ToInt64(),
@@ -838,13 +823,6 @@ namespace PersonalUsageOverlay
                     titleAnchorObservedAt = titleAnchor != null ? titleAnchor.ObservedAtUtc.ToString("o") : null,
                     titleAnchorElapsedMs = titleAnchor != null ? (long?)titleAnchor.ElapsedMilliseconds : null,
                     titleAnchorSearchLimit = titleAnchor != null ? titleAnchor.SearchLimit : null,
-                    backgroundTitle = backgroundTitle == null ? null : new
-                    {
-                        status = backgroundTitle.Status,
-                        searchLimit = backgroundTitle.SearchLimit,
-                        elapsedMs = backgroundTitle.ElapsedMilliseconds,
-                        hasPlacement = !proposedBounds.IsEmpty
-                    },
                     titleBounds = titleAnchor != null ? new { x=titleAnchor.TitleBounds.X,y=titleAnchor.TitleBounds.Y,width=titleAnchor.TitleBounds.Width,height=titleAnchor.TitleBounds.Height } : null,
                     headerBounds = titleAnchor != null ? new { x=titleAnchor.HeaderBounds.X,y=titleAnchor.HeaderBounds.Y,width=titleAnchor.HeaderBounds.Width,height=titleAnchor.HeaderBounds.Height } : null,
                     executionMode = "window",

@@ -5,7 +5,7 @@ namespace PersonalUsageOverlay
 {
     // Numeric handles below are fixtures, never native windows. These checks do
     // not call Place/SetWindowPos, activate a window, or inspect the desktop.
-    internal static class PositionAdjustmentChecks
+    internal static class BadgeZOrderSelectionChecks
     {
         private static readonly IntPtr Target = new IntPtr(101);
         private static readonly IntPtr Badge = new IntPtr(202);
@@ -29,26 +29,6 @@ namespace PersonalUsageOverlay
             checks["badge_z_order_topmost_target_retains_previous_group_after_self_skip"] = Select(true, true, Above, IntPtr.Zero, null) == Above
                 && Select(true, true, Badge, Above, null) == Above;
 
-            bool foregroundCodex = true;
-            for (int mask = 0; mask < 8; mask++)
-                foregroundCodex &= PositionAdjustmentPolicy.CanShow(true, (mask & 1) != 0,
-                    (mask & 2) != 0, (mask & 4) != 0);
-            checks["settings_overlay_policy_foreground_codex_preserves_normal_overlay_behavior"] = foregroundCodex;
-
-            bool settingsTable = true;
-            for (int mask = 0; mask < 4; mask++)
-                settingsTable &= PositionAdjustmentPolicy.CanShow(false, true,
-                    (mask & 1) != 0, (mask & 2) != 0) == (mask == 3);
-            checks["settings_overlay_policy_foreground_settings_requires_normal_window_and_target"] = settingsTable;
-            checks["settings_overlay_policy_valid_settings_display_has_no_page_restriction"] = PositionAdjustmentPolicy.CanShow(false, true, true, true);
-            checks["settings_overlay_policy_minimized_settings_cannot_keep_overlay_visible"] = !PositionAdjustmentPolicy.CanShow(false, true, false, true);
-            checks["settings_overlay_policy_missing_codex_target_disables_settings_display"] = !PositionAdjustmentPolicy.CanShow(false, true, true, false);
-
-            bool otherApplication = true;
-            for (int mask = 0; mask < 4; mask++)
-                otherApplication &= !PositionAdjustmentPolicy.CanShow(false, false,
-                    (mask & 1) != 0, (mask & 2) != 0);
-            checks["settings_overlay_policy_unrelated_foreground_app_never_shows_settings_overlay"] = otherApplication;
         }
 
         private static IntPtr Select(bool targetTopmost, bool aboveTopmost, IntPtr targetPrevious,
